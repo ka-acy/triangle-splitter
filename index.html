@@ -180,6 +180,7 @@ textarea:focus,input:focus{border-color:var(--accent)}
     <h1>Who had what?</h1>
     <p class="sub">Tap names under each item. Tap more than one to share it.</p>
     <div class="warn hidden" id="scanWarn"></div>
+    <img class="thumb hidden" id="itemsThumb" alt="Your receipt" style="max-height:none;object-fit:contain">
     <div class="card" id="itemsCard"><div id="itemList"></div>
       <button class="btn sec small" id="addItem" style="width:100%;margin-top:12px">+ Add item</button>
     </div>
@@ -423,7 +424,7 @@ function reset(){
   if (cloud()) cloud().closeBill(); else saveLocal();
   Object.assign(S, {people:[], items:[], tax:0, tip:0, tipPct:null, mode:'prop', receiptTotal:null, note:'',
     billId:null, shared:false, members:[], sentSig:null, msgMode:null, msgEdited:false, counted:[]});
-  $('#tax').value=''; $('#tip').value=''; $('#note').value=''; $('#scanCard').classList.add('hidden'); $('#scanWarn').classList.add('hidden');
+  $('#tax').value=''; $('#tip').value=''; $('#note').value=''; $('#scanCard').classList.add('hidden'); $('#scanWarn').classList.add('hidden'); $('#itemsThumb').classList.add('hidden');
   $('#cam').value=''; setTipSeg(); setModeSeg(); go(0);
 }
 function ensureMe(){
@@ -470,52 +471,96 @@ $('#cam').onchange = async e => {
   }
 };
 
-// Downscale + grayscale + contrast stretch to help OCR
+// Resize, straighten, and turn the photo into crisp black-on-white text for OCR
 function prepImage(file){
   return new Promise((res, rej) => {
     const im = new Image();
     im.onload = () => {
-      const max = 2000, sc = Math.min(1, max / Math.max(im.width, im.height));
-      const c = document.createElement('canvas');
-      c.width = Math.round(im.width*sc); c.height = Math.round(im.height*sc);
-      const g = c.getContext('2d'); g.drawImage(im, 0, 0, c.width, c.height);
-      const d = g.getImageData(0,0,c.width,c.height), p = d.data;
-      const gray = new Uint8ClampedArray(p.length/4);
-      for (let i=0,j=0;i<p.length;i+=4,j++) gray[j] = .299*p[i]+.587*p[i+1]+.114*p[i+2];
-      const hist = new Array(256).fill(0); gray.forEach(v=>hist[v|0]++);
-      let lo=0, hi=255, acc=0, n=gray.length;
-      for (let v=0; v<256; v++){ acc+=hist[v]; if (acc>n*.02){ lo=v; break; } }
-      acc=0; for (let v=255; v>=0; v--){ acc+=hist[v]; if (acc>n*.02){ hi=v; break; } }
-      const span = Math.max(1, hi-lo);
-      for (let i=0,j=0;i<p.length;i+=4,j++){ const v = Math.max(0,Math.min(255,(gray[j]-lo)*255/span)); p[i]=p[i+1]=p[i+2]=v; }
-      g.putImageData(d,0,0);
+      // small photos get enlarged (OCR wants tall letters), huge ones shrunk
+      const long = Math.max(im.width, im.height), sc = Math.min(3, Math.max(1800 / long, Math.min(1, 2400 / long)));
+      const W = Math.round(im.width * sc), H = Math.round(im.height * sc);
+      const angle = findSkew(im);
+      const c = document.createElement('canvas'); c.width = W; c.height = H;
+      const g = c.getContext('2d');
+      g.fillStyle = '#fff'; g.fillRect(0, 0, W, H);
+      g.translate(W / 2, H / 2); g.rotate(-angle * Math.PI / 180); g.drawImage(im, -W / 2, -H / 2, W, H);
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      const d = g.getImageData(0, 0, W, H);
+      binarize(d, Math.max(15, Math.round(W / 24)));
+      g.putImageData(d, 0, 0);
       res(c);
     };
     im.onerror = rej;
     im.src = URL.createObjectURL(file);
   });
 }
+// Grayscale + local threshold: each pixel is compared with its own neighborhood, so shadows and glare don't wipe out text
+function binarize(d, win, t = .15){
+  const p = d.data, W = d.width, H = d.height, gray = new Float32Array(W * H), sum = new Float64Array((W + 1) * (H + 1));
+  for (let i = 0, j = 0; i < p.length; i += 4, j++) gray[j] = .299 * p[i] + .587 * p[i + 1] + .114 * p[i + 2];
+  for (let y = 0; y < H; y++) for (let x = 0, row = 0; x < W; x++) { row += gray[y * W + x]; sum[(y + 1) * (W + 1) + x + 1] = sum[y * (W + 1) + x + 1] + row; }
+  const r = win >> 1, out = new Uint8Array(W * H);
+  for (let y = 0; y < H; y++) {
+    const y0 = Math.max(0, y - r), y1 = Math.min(H, y + r + 1);
+    for (let x = 0; x < W; x++) {
+      const x0 = Math.max(0, x - r), x1 = Math.min(W, x + r + 1), n = (y1 - y0) * (x1 - x0);
+      const s = sum[y1 * (W + 1) + x1] - sum[y0 * (W + 1) + x1] - sum[y1 * (W + 1) + x0] + sum[y0 * (W + 1) + x0];
+      out[y * W + x] = gray[y * W + x] * n < s * (1 - t) ? 0 : 255;
+    }
+  }
+  for (let i = 0, j = 0; i < p.length; i += 4, j++) p[i] = p[i + 1] = p[i + 2] = out[j];
+  return out;
+}
+// Find the tilt (degrees) that lines text up into the sharpest rows
+function findSkew(im){
+  const sc = Math.min(1, 700 / Math.max(im.width, im.height)), W = Math.round(im.width * sc), H = Math.round(im.height * sc);
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d'); g.drawImage(im, 0, 0, W, H);
+  const bw = binarize(g.getImageData(0, 0, W, H), Math.max(9, Math.round(W / 24)));
+  const pts = []; for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (!bw[y * W + x]) pts.push(x - W / 2, y - H / 2);
+  let best = 0, bestScore = -1;
+  for (let a = -10; a <= 10; a += .5) {
+    const s = Math.sin(a * Math.PI / 180), co = Math.cos(a * Math.PI / 180), rows = new Float64Array(H * 2);
+    for (let i = 0; i < pts.length; i += 2) { const yy = Math.round(pts[i + 1] * co - pts[i] * s + H); if (yy >= 0 && yy < rows.length) rows[yy]++; }
+    let score = 0; for (const v of rows) score += v * v;
+    if (score > bestScore) { bestScore = score; best = a; }
+  }
+  return best;
+}
 
 // Turn OCR text into items / tax / tip / total
 function parseReceipt(text){
   const out = { items:[], tax:null, tip:null, total:null, subtotal:null };
   const skip = /(sub\s*-?\s*total|total|balance|amount\s*due|change|cash|visa|master|amex|discover|card|debit|credit|auth|approv|tender|payment|paid|thank|server|table|guest|check\s*#|order\s*#|ticket|date|time|tel|phone|www|\.com|suggested|gratuity\s*guide)/i;
-  const priceRe = /(-?\$?\s?\d{1,4}[.,]\s?\d{2})\s*[A-Z]?\s*$/;
+  // a price at the end of a line; allows common misreads (S→5, O→0, l→1, B→8) and a dropped decimal point ("40 22")
+  const priceRe = /(-?\$?\s?[\dSOolIB]{1,4}(?:[.,]\s?|\s)[\dSOolIB]{2})(?:\s+\S{1,2})?\s*$/;   // ignores a stray mark or tax flag after the price
+  const fix = t => t.replace(/[Ss]/g,'5').replace(/[Oo]/g,'0').replace(/[lI]/g,'1').replace(/B/g,'8');
+  let pending = '';   // item name whose price landed on the next line
   for (let raw of text.split('\n')) {
-    const line = raw.replace(/[|•·_~]/g,' ').replace(/\s+/g,' ').trim();
+    const line = raw.replace(/[|•·_~\\]/g,' ').replace(/\s+/g,' ').trim();
     if (!line) continue;
-    const m = line.match(priceRe); if (!m) continue;
-    const cents = toCents(m[1].replace(',', '.').replace(/\s/g,''));
+    const m = line.match(priceRe);
+    if (!m || !/\d/.test(m[1]) || (/^\S+\s\S{2}$/.test(m[1].trim()) && !/\d\s\d{2}$/.test(m[1]))) {
+      pending = /[A-Za-z]{3}/.test(line) && !/\d/.test(line) ? line : ''; continue;
+    }
+    const num = fix(m[1].replace(/\$/g,'').trim()).replace(/(\d)[.,]?\s(\d{2})$/, '$1.$2').replace(',', '.').replace(/\s/g,'');
+    if (!/^-?\d{1,4}\.\d{2}$/.test(num)) { pending = ''; continue; }
+    const cents = toCents(num);
     let name = line.slice(0, m.index).replace(/[\s.$:\-]+$/,'').trim();
+    if (!/[A-Za-z]{2}/.test(name) && pending) name = pending;
+    pending = '';
     const low = name.toLowerCase();
     if (/sub\s*-?\s*total/.test(low)) { out.subtotal = cents; continue; }
     if (/\btax\b|hst|gst|vat/.test(low)) { out.tax = (out.tax||0) + cents; continue; }
     if (/\btip\b|gratuity|service charge/.test(low) && !/suggest|guide/.test(low)) { out.tip = cents; continue; }
     if (/\btotal\b|amount due|balance due/.test(low) && !/sub/.test(low)) { out.total = Math.max(out.total||0, cents); continue; }
+    if (/^\W*a?m?ount\b/.test(low) || cents === out.total) continue;   // card slip repeats the total
     if (skip.test(low)) continue;
     if (cents <= 0 || cents > 100000) continue;
-    let qty = 1; const q = name.match(/^(\d{1,2})\s*[xX@]?\s+(.*)$/);
+    name = name.replace(/^(?:[^A-Za-z0-9\s]+\s*)+/, '').replace(/^(?:[A-Za-z]\s+|[^\sA-Za-z0-9]{1,2}\s+)+(?=\S{2})/, '');   // junk marks before the name
+    let qty = 1; const q = name.match(/^(\d{1,2})\s*[xX@]?\s+([A-Za-z]{2}.*)$/);
     if (q && +q[1] > 0 && +q[1] < 20) { qty = +q[1]; name = q[2]; }
+    else name = name.replace(/^(?:\S{1,2}\s+)+(?=[A-Za-z]{2})/, '');
     name = name.replace(/^[^A-Za-z0-9]+/,'').trim();
     if (name.length < 2 || !/[A-Za-z]{2}/.test(name)) continue;
     out.items.push({ name: titleCase(name) + (qty > 1 ? ` (x${qty})` : ''), cents });
@@ -534,7 +579,10 @@ function applyParsed(r){
   w.innerHTML = found
     ? `Found ${found} item${found>1?'s':''}. Double-check names and prices against the receipt, scanning isn't perfect.`
     : `Couldn't pick out items from that photo. Type them in below, or retake it flat and well lit.`;
+  w.innerHTML += ` <button class="ghost" id="viewReceipt" style="padding:0">View receipt</button>`;
   w.classList.remove('hidden');
+  $('#itemsThumb').src = $('#thumb').src;
+  $('#viewReceipt').onclick = () => { const t = $('#itemsThumb'); t.classList.toggle('hidden'); $('#viewReceipt').textContent = t.classList.contains('hidden') ? 'View receipt' : 'Hide receipt'; };
   changed();
   go(1);
 }
