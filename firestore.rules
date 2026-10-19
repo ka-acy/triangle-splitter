@@ -1,5 +1,5 @@
 rules_version = '2';
-// Triangle Splitter security rules. Paste into Firebase console > Firestore Database > Rules, then Publish.
+// Triangle Splitter security rules. Published automatically on every push to main (.github/workflows/deploy.yml).
 service cloud.firestore {
   match /databases/{db}/documents {
     function signedIn() { return request.auth != null; }

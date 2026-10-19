@@ -1,4 +1,4 @@
-# Publishes the app to https://trianglesplitter.web.app on every push to main.
+# Publishes the app to https://trianglesplitter.web.app and the database rules (firestore.rules) on every push to main.
 name: Deploy to Firebase Hosting
 on:
   push:
@@ -14,3 +14,13 @@ jobs:
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           channelId: live
           projectId: trianglesplitter
+  rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish database rules
+        env:
+          SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          printf '%s' "$SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json" npx --yes firebase-tools@13 deploy --only firestore:rules --project trianglesplitter --non-interactive
