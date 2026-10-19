@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Triangle Splitter</title>
-<meta name="description" content="Snap a receipt, tap who had what, request on Venmo.">
+<meta name="description" content="Snap a receipt, tap who had what, get paid on Venmo or Zelle.">
 <meta name="theme-color" content="#F6F1E7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#1C1A17" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -140,7 +140,7 @@ textarea:focus,input:focus{border-color:var(--accent)}
     <div class="how">
       <div><b>📸</b><span><strong>Snap</strong> the receipt</span></div>
       <div><b>👆</b><span><strong>Tap</strong> who had what</span></div>
-      <div><b>💸</b><span><strong>Request</strong> on Venmo</span></div>
+      <div><b>💸</b><span><strong>Get paid</strong> on Venmo or Zelle</span></div>
     </div>
     <div class="hero">
       <label class="btn" for="cam">📷 Scan receipt</label>
@@ -231,6 +231,11 @@ textarea:focus,input:focus{border-color:var(--accent)}
       <h2>Send each friend their amount</h2>
       <p class="muted" style="margin:0 0 12px" id="sendMsg"></p>
       <button class="btn small" id="sendBtn" style="width:100%">Send amounts</button>
+    </div>
+    <div class="card">
+      <h2>How you get paid</h2>
+      <div class="seg" id="paySeg" style="margin-bottom:10px"><button data-pay="venmo">Venmo</button><button data-pay="zelle">Zelle</button></div>
+      <input id="payId" autocomplete="off" autocapitalize="off">
     </div>
     <div class="card" id="resList"></div>
     <div class="card">
@@ -679,11 +684,13 @@ function renderResults(){
   const rows = compute(), grand = rows.reduce((a,r) => a + r.total, 0);
   const note = S.note || 'Dinner';
   $('#resSub').textContent = `${money(grand)} total · tax & tip split ${S.mode === 'even' ? 'evenly' : 'by what each person ordered'}`;
+  const pay = loadPay(), zelle = pay.method === 'zelle' && pay.zelle;
+  if (pay.method === 'zelle') rows.forEach(r => r.venmo = '');   // Zelle has no request links
   const others = rows.filter(r => !r.me), paidN = others.filter(r => r.paid).length;
   $('#resList').innerHTML = rows.map((r,k) => {
     const url = r.venmo && !r.me ? `https://venmo.com/?txn=charge&audience=private&recipients=${encodeURIComponent(r.venmo)}&amount=${(r.total/100).toFixed(2)}&note=${encodeURIComponent(note)}` : '';
     const action = r.me ? '' : url ? `<a class="btn small" style="margin-top:6px" href="${url}">Request</a>`
-                          : `<button class="btn sec small" data-copy="${k}" style="margin-top:6px">Copy</button>`;
+                          : `<button class="btn sec small" data-copy="${k}" style="margin-top:6px">${zelle ? 'Copy Zelle' : 'Copy'}</button>`;
     const paidBtn = r.me ? '' : `<button class="chip paidchip ${r.paid?'on':''}" data-paid="${k}">${r.paid ? '✓ Paid' : r.iPaid ? 'Says paid · confirm' : 'Mark paid'}</button>`;
     return `<div class="res ${r.paid?'isPaid':''}">
       <div class="badge" style="background:${r.color}">${initial(r.name)}</div>
@@ -694,7 +701,11 @@ function renderResults(){
         <div class="amt">${money(r.total)}</div>${r.paid ? '' : action}
       </div></div>`;
   }).join('') + (others.length ? `<div class="muted" style="margin-top:12px;text-align:center">${paidN} of ${others.length} paid</div>` : '');
-  $('#resList').querySelectorAll('[data-copy]').forEach(b => b.onclick = () => copy((rows[+b.dataset.copy].total/100).toFixed(2), 'Amount copied'));
+  $('#resList').querySelectorAll('[data-copy]').forEach(b => b.onclick = () => {
+    const t = rows[+b.dataset.copy].total;
+    if (zelle) copy(`${note}: you owe ${money(t)}. Zelle me at ${pay.zelle} 🙏`, 'Zelle message copied');
+    else copy((t/100).toFixed(2), 'Amount copied');
+  });
   $('#resList').querySelectorAll('[data-paid]').forEach(b => b.onclick = () => {
     const r = rows[+b.dataset.paid], on = !r.paid;
     if (r.member) { cloud() && cloud().setMemberPaid(r.uid, on); S.members.find(m => m.uid === r.uid).paid = on; }
@@ -714,6 +725,8 @@ function renderResults(){
     $('#sendBtn').onclick = async () => { await cloud().sendAmounts(mem); S.sentSig = sig; changed(); renderResults(); toast('Amounts sent'); };
   }
 
+  drawPay();
+
   // Group text
   const c = cloud();
   $('#msgSeg').classList.toggle('hidden', !c);
@@ -731,6 +744,28 @@ function renderResults(){
   }
   updateSms();
 }
+/* ---------- How you get paid (Venmo or Zelle) ---------- */
+const PAY_KEY = 'splitit.pay';
+function loadPay(){ try { return {method:'venmo', venmo:'', zelle:'', ...JSON.parse(localStorage.getItem(PAY_KEY))}; } catch(e){ return {method:'venmo', venmo:'', zelle:''}; } }
+function storePay(p){ try { localStorage.setItem(PAY_KEY, JSON.stringify(p)); } catch(e){} }
+function setPay(p){ storePay(p); cloud() && cloud().setPay(p); }
+function wirePay(seg, input, after){
+  const draw = () => {
+    const p = loadPay(), z = p.method === 'zelle';
+    seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.pay === p.method));
+    input.placeholder = z ? 'Zelle phone or email' : '@your-venmo';
+    input.inputMode = z ? 'email' : 'text';
+    if (document.activeElement !== input) input.value = z ? p.zelle : p.venmo ? '@' + p.venmo : '';
+  };
+  seg.querySelectorAll('button').forEach(b => b.onclick = () => { setPay({...loadPay(), method:b.dataset.pay}); draw(); after(); });
+  input.onchange = () => {
+    const p = loadPay(), v = input.value.trim();
+    p[p.method] = p.method === 'zelle' ? v : v.replace(/^@/, '');
+    setPay(p); after();
+  };
+  draw(); return draw;
+}
+const drawPay = wirePay($('#paySeg'), $('#payId'), () => { S.msgEdited = false; renderResults(); });
 $('#msgSeg').querySelectorAll('button').forEach(b => b.onclick = () => { S.msgMode = b.dataset.m; S.msgEdited = false; renderResults(); });
 function linkText(link, sent){
   const note = S.note || 'Dinner';
@@ -739,14 +774,16 @@ function linkText(link, sent){
     `\n${link}`;
 }
 function groupText(rows, grand, note){
-  const anyVenmo = rows.some(r => r.venmo && !r.me);
+  const anyVenmo = rows.some(r => r.venmo && !r.me), pay = loadPay();
+  const ask = pay.method === 'zelle' ? (pay.zelle ? `Zelle me at ${pay.zelle} when you get a chance 🙏` : `Zelle me when you get a chance 🙏`)
+    : anyVenmo ? `Sending Venmo requests now 🙏` : `Venmo me${pay.venmo ? ' @' + pay.venmo : ''} when you get a chance 🙏`;
   const lines = rows.map(r => {
     const mine = S.items.filter(i => i.price && (whoOf(i).includes(r.id) || !whoOf(i).length)).map(i => i.name || 'item');
     const what = mine.length ? ` (${mine.slice(0,3).join(', ')}${mine.length > 3 ? ` +${mine.length-3} more` : ''})` : '';
     return `• ${r.name}: ${money(r.total)}${what}`;
   });
   return `${note} split 🧾\n\n${lines.join('\n')}\n\nTotal ${money(grand)}, tax & tip included (split ${S.mode === 'even' ? 'evenly' : 'by what you ordered'}).\n` +
-    (anyVenmo ? `Sending Venmo requests now 🙏` : `Venmo me when you get a chance 🙏`);
+    ask;
 }
 function updateSms(){ $('#smsBtn').href = 'sms:?&body=' + encodeURIComponent($('#groupMsg').value); }
 $('#groupMsg').oninput = () => { S.msgEdited = true; updateSms(); };
@@ -776,11 +813,13 @@ $('#avatarBtn').onclick = () => {
   const c = cloud(); if (!c) return;
   openSheet(`<h2>${esc(c.user.displayName || 'Your account')}</h2>
     <p class="muted" style="margin:0 0 14px">${esc(c.user.email || '')}</p>
-    <div class="muted" style="margin-bottom:6px">Your Venmo username (so friends can pay you in one tap)</div>
-    <input id="myVenmo" placeholder="@yourname" autocapitalize="off" value="${esc(c.profile.venmo ? '@'+c.profile.venmo : '')}">
+    <div class="muted" style="margin-bottom:6px">How you get paid (friends see this when they open your link)</div>
+    <div class="seg" id="aPaySeg" style="margin-bottom:10px"><button data-pay="venmo">Venmo</button><button data-pay="zelle">Zelle</button></div>
+    <input id="aPayId" autocomplete="off" autocapitalize="off">
     <button class="btn" id="saveAcct" style="margin-top:12px">Save</button>
     <button class="btn sec" id="signOut" style="margin-top:10px">Sign out</button>`);
-  $('#saveAcct').onclick = () => { c.setVenmo($('#myVenmo').value.trim().replace(/^@/,'')); closeSheet(); toast('Saved'); };
+  wirePay($('#aPaySeg'), $('#aPayId'), () => {});
+  $('#saveAcct').onclick = () => { closeSheet(); toast('Saved'); };
   $('#signOut').onclick = () => { closeSheet(); c.signOut(); };
 };
 // Called by cloud.js whenever sign-in state changes

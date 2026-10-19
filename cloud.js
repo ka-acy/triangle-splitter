@@ -31,7 +31,10 @@ function init() {
       try {
         const snap = await F.getDoc(userRef(u.uid));
         const d = snap.exists() ? snap.data() : {};
-        C.profile = { venmo: d.venmo || '', savedPeople: d.savedPeople || [] };
+        C.profile = { venmo: d.venmo || '', zelle: d.zelle || '', payMethod: d.payMethod || 'venmo', savedPeople: d.savedPeople || [] };
+        // account's payment info wins; otherwise upload what this phone has
+        if (d.venmo || d.zelle) storePay({ method: C.profile.payMethod, venmo: C.profile.venmo, zelle: C.profile.zelle });
+        else { const p = loadPay(); if (p.venmo || p.zelle) C.setPay(p); }
         // merge friends saved on this device with friends saved on the account
         mergeFriends(C.profile.savedPeople, d.removedPeople || []);
         C.syncSaved();
@@ -72,9 +75,9 @@ function init() {
     const list = loadSaved().slice(0, 50);
     F.setDoc(userRef(C.user.uid), { savedPeople: list, removedPeople: loadRemoved(), updatedAt: F.serverTimestamp() }, { merge: true }).catch(console.warn);
   };
-  C.setVenmo = v => {
-    C.profile.venmo = v;
-    F.setDoc(userRef(C.user.uid), { venmo: v }, { merge: true }).catch(console.warn);
+  C.setPay = p => {
+    Object.assign(C.profile, { venmo: p.venmo, zelle: p.zelle, payMethod: p.method });
+    F.setDoc(userRef(C.user.uid), { venmo: p.venmo, zelle: p.zelle, payMethod: p.method }, { merge: true }).catch(console.warn);
     if (S.billId && S.shared) writePublic();
   };
 
@@ -103,6 +106,7 @@ function init() {
   function writePublic() {
     return F.setDoc(pubRef(S.billId), {
       ownerId: C.user.uid, ownerName: C.user.displayName || 'Your friend', ownerVenmo: C.profile.venmo || '',
+      ownerPay: C.profile.payMethod || 'venmo', ownerZelle: C.profile.zelle || '',
       title: S.note || 'Dinner', items: S.items.filter(i => i.price).map(i => ({ id: i.id, name: i.name || 'Item', price: i.price })),
       locked: !!S.sentSig, updatedAt: F.serverTimestamp(),
     }, { merge: true }).catch(console.warn);
@@ -210,7 +214,8 @@ function init() {
   function renderJoin(el, bid, pub, me) {
     const owner = esc(pub.ownerName || 'Your friend'), first = esc((pub.ownerName || 'them').split(' ')[0]);
     const has = me.amount != null, claims = me.claims || [];
-    const pay = has && pub.ownerVenmo
+    const zelle = has && pub.ownerPay === 'zelle' && pub.ownerZelle;
+    const pay = has && !zelle && pub.ownerVenmo
       ? `https://venmo.com/?txn=pay&audience=private&recipients=${encodeURIComponent(pub.ownerVenmo)}&amount=${(me.amount / 100).toFixed(2)}&note=${encodeURIComponent(pub.title || 'Triangle Splitter')}` : '';
     el.innerHTML = `
       <h1>${owner}'s bill</h1>
@@ -221,6 +226,9 @@ function init() {
           <div class="muted">${money(me.food || 0)} food + ${money(me.tax || 0)} tax + ${money(me.tip || 0)} tip</div>
           ${me.paid ? `<div class="ok">✓ ${first} marked you as paid</div>` : `
             ${pay ? `<a class="btn" style="margin-top:16px" href="${pay}">Pay ${first} on Venmo</a>` : ''}
+            ${zelle ? `<div class="muted" style="margin-top:16px">Pay ${first} with Zelle in your bank app:</div>
+              <div style="font-weight:700;margin:4px 0 10px">${esc(pub.ownerZelle)}</div>
+              <button class="btn" id="copyZelle">Copy Zelle info</button>` : ''}
             <button class="btn sec" id="iPaid" style="margin-top:10px">${me.iPaid ? '✓ You said you paid' : 'I\'ve paid'}</button>`}
         </div>`
       : `<div class="card"><strong>What did you have?</strong>
@@ -239,6 +247,8 @@ function init() {
       const next = on ? [...claims, b.dataset.it] : claims.filter(x => x !== b.dataset.it);
       F.updateDoc(memRef(bid, C.user.uid), { claims: next }).catch(() => toast('Couldn\'t save. Try again.'));
     });
+    const cz = el.querySelector('#copyZelle');
+    if (cz) cz.onclick = () => copy(pub.ownerZelle, 'Copied. Paste it into Zelle with ' + money(me.amount));
     const ip = el.querySelector('#iPaid');
     if (ip) ip.onclick = () => F.updateDoc(memRef(bid, C.user.uid), { iPaid: !me.iPaid }).catch(console.warn);
   }
