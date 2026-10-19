@@ -120,7 +120,7 @@ textarea:focus,input:focus{border-color:var(--accent)}
 <div class="wrap">
   <header>
     <div class="brand" id="brand">Triangle<span>Splitter</span></div>
-    <button class="ghost hidden" id="restart">Start over</button>
+    <button class="ghost hidden" id="restart">New bill</button>
     <button class="ghost hidden" id="signInBtn">Sign in</button>
     <button class="avatar hidden" id="avatarBtn" aria-label="Account"></button>
   </header>
@@ -273,7 +273,51 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const initial = n => esc((String(n||'?').trim()[0] || '?').toUpperCase());
 const cloud = () => window.Cloud && window.Cloud.user ? window.Cloud : null;
 function toast(m){ const t=$('#toast'); t.textContent=m; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),2000); }
-function changed(){ cloud() && cloud().queueSave(); }
+function changed(){ if (cloud()) cloud().queueSave(); else { clearTimeout(localTimer); localTimer = setTimeout(saveLocal, 500); } }
+
+/* ---------- Bills saved on this phone (when not signed in) ---------- */
+const BILLS_KEY = 'splitit.bills';
+let localTimer = null;
+function loadBills(){ try { return JSON.parse(localStorage.getItem(BILLS_KEY)) || []; } catch(e){ return []; } }
+function storeBills(list){ try { localStorage.setItem(BILLS_KEY, JSON.stringify(list.slice(0,40))); } catch(e){} }
+function saveLocal(){
+  clearTimeout(localTimer);
+  const hasContent = S.items.some(i => i.price) || S.people.filter(p => !p.me).length;
+  if (!hasContent && !S.billId) return;                 // don't save empty bills
+  if (!S.billId) S.billId = 'l_' + id();
+  const rows = allPeople().length ? compute() : [], others = rows.filter(r => !r.me);
+  const b = { id:S.billId, note:S.note || '', items:S.items, people:S.people, tax:S.tax || 0, tip:S.tip || 0, tipPct:S.tipPct ?? null,
+    mode:S.mode, total:rows.reduce((a, r) => a + r.total, 0), peopleCount:others.length, paidCount:others.filter(r => r.paid).length, updatedAt:Date.now() };
+  storeBills([b, ...loadBills().filter(x => x.id !== b.id)]);
+}
+// Home screen list. rows: {id, host, note | title, ownerName, total, peopleCount, paidCount, when}
+function drawBills(rows, open, del){
+  const list = $('#billsList');
+  if (!rows.length) { list.innerHTML = '<div class="muted">Bills you split will show up here.</div>'; return; }
+  list.innerHTML = rows.map((b, i) => {
+    const date = new Date(b.when).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    const done = b.host && b.peopleCount && b.paidCount >= b.peopleCount;
+    return `<div class="bill" data-i="${i}">
+      <div class="badge" style="background:${b.host ? 'var(--accent)' : '#8E5BD6'}">${b.host ? '🧾' : '👋'}</div>
+      <div class="grow"><strong>${esc(b.host ? (b.note || 'Dinner') : (b.title || 'Dinner'))}</strong>
+        <div class="muted">${date} · ${b.host ? (b.peopleCount && b.total ? (done ? '✓ Everyone paid' : `${b.paidCount || 0} of ${b.peopleCount} paid`) : 'Draft')
+                                               : `${esc(b.ownerName || 'A friend')}'s bill`}</div></div>
+      <div style="font-weight:700">${b.host ? money(b.total || 0) : ''}</div>
+      <button class="x" data-del="${i}" aria-label="Delete">×</button></div>`;
+  }).join('');
+  list.querySelectorAll('.bill').forEach(el => el.onclick = e => {
+    const b = rows[+el.dataset.i];
+    if (!e.target.closest('[data-del]')) return open(b);
+    if (confirm(b.host ? `Delete "${b.note || 'Dinner'}"?` : `Remove ${b.ownerName || 'this'} bill from your list?`)) del(b);
+  });
+}
+function renderBills(){
+  $('#billsWrap').classList.remove('hidden');
+  if (cloud()) return cloud().renderBills();
+  drawBills(loadBills().map(b => ({...b, host:true, when:b.updatedAt})),
+    b => { loadBill(b); go(S.people.length && S.items.some(i => i.price) ? 3 : 1); },
+    b => { storeBills(loadBills().filter(x => x.id !== b.id)); renderBills(); });
+}
 
 function loadSaved(){ try { return JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch(e){ return []; } }
 function storeSaved(list){ try { localStorage.setItem(LS_KEY, JSON.stringify(list.slice(0,50))); } catch(e){} }
@@ -349,7 +393,7 @@ function go(n){
   $('#next').classList.toggle('hidden', n === 0 || n === 4);
   $('#restart').classList.toggle('hidden', n === 0 || n === 4);
   $('#next').textContent = n === 1 ? 'Next: assign items' : n === 2 ? 'Calculate' : 'Done';
-  if (n === 0) { if (location.hash) history.replaceState(null, '', location.pathname); cloud() && cloud().renderBills(); }
+  if (n === 0) { if (location.hash) history.replaceState(null, '', location.pathname); renderBills(); }
   if (n === 1) { ensureMe(); renderPeople(); }
   if (n === 2) renderItems();
   if (n === 3) renderResults();
@@ -362,20 +406,21 @@ function updateNext(){
   else if (S.screen === 2) b.disabled = !S.items.some(i => i.price);
   else b.disabled = false;
 }
-$('#back').onclick = () => go(Math.max(0, S.screen - 1));
-$('#brand').onclick = () => { if (S.screen === 0) return; if (S.screen === 4 || confirm('Go home? Your bill is kept' + (cloud() ? ' in Your bills.' : ' until you start over.'))) { if (cloud()) reset(); else go(0); } };
+$('#back').onclick = () => S.screen === 1 ? reset() : go(Math.max(0, S.screen - 1));
+$('#brand').onclick = () => { if (S.screen !== 0) reset(); };   // the bill is kept in Your bills
 $('#next').onclick = () => {
   if (S.screen === 2) {
     const un = S.items.filter(i => i.price && !whoOf(i).length);
     if (un.length && !confirm(`${un.length} item${un.length>1?'s are':' is'} not assigned to anyone. Split ${un.length>1?'them':'it'} among everyone?`)) return;
   }
-  if (S.screen === 3) { if (cloud()) { cloud().flush(); reset(); toast('Saved to Your bills'); } else if (confirm('Start a new bill?')) reset(); return; }
+  if (S.screen === 3) { reset(); toast('Saved to Your bills'); return; }
   if (S.screen === 1) recordBill();
   go(S.screen + 1);
 };
-$('#restart').onclick = () => { if (confirm(cloud() ? 'Start a new bill? This one stays in Your bills.' : 'Start over? This clears the current bill.')) reset(); };
+$('#restart').onclick = () => { const kept = S.billId || S.items.some(i => i.price); reset(); if (kept) toast('Saved to Your bills'); };
+// Save the current bill to Your bills and go home with a blank one
 function reset(){
-  cloud() && cloud().closeBill();
+  if (cloud()) cloud().closeBill(); else saveLocal();
   Object.assign(S, {people:[], items:[], tax:0, tip:0, tipPct:null, mode:'prop', receiptTotal:null, note:'',
     billId:null, shared:false, members:[], sentSig:null, msgMode:null, msgEdited:false, counted:[]});
   $('#tax').value=''; $('#tip').value=''; $('#note').value=''; $('#scanCard').classList.add('hidden'); $('#scanWarn').classList.add('hidden');
@@ -386,7 +431,7 @@ function ensureMe(){
   if (S.billId && S.people.length) return;
   S.people.unshift({id:id(), name: c.firstName(), venmo:'', me:true});
 }
-// Load a saved bill (from the cloud) into the editor
+// Load a saved bill (from the phone or the cloud) into the editor
 function loadBill(b){
   Object.assign(S, { people:b.people||[], items:b.items||[], tax:b.tax||0, tip:b.tip||0, tipPct:b.tipPct ?? null,
     mode:b.mode||'prop', note:b.note||'', billId:b.id, shared:!!b.shared, sentSig:b.sentSig||null, receiptTotal:null, msgEdited:false, msgMode:null,
@@ -821,7 +866,7 @@ function renderAccount(){
   $('#signInBtn').classList.toggle('hidden', !enabled || !!c);
   $('#avatarBtn').classList.toggle('hidden', !c);
   if (c) $('#avatarBtn').textContent = initial(c.user.displayName || c.user.email);
-  if (S.screen === 0) { $('#billsWrap').classList.toggle('hidden', !c); c && c.renderBills(); }
+  if (S.screen === 0) renderBills();
   else if (S.screen === 1) renderPeople();
   else if (S.screen === 3) renderResults();
 }

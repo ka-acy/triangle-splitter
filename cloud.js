@@ -38,6 +38,7 @@ function init() {
         // merge friends saved on this device with friends saved on the account
         mergeFriends(C.profile.savedPeople, d.removedPeople || []);
         C.syncSaved();
+        await importLocalBills();
       } catch (e) { console.warn(e); }
       closeSheet();
     } else {
@@ -141,6 +142,24 @@ function init() {
     await F.setDoc(pubRef(S.billId), { locked: true }, { merge: true }).catch(console.warn);
   };
 
+  // Bills made on this phone before signing in move to the account
+  async function importLocalBills() {
+    const local = loadBills(); if (!local.length) return;
+    await Promise.all(local.map(({ id, updatedAt, ...b }) => F.setDoc(billRef(F.doc(F.collection(db, 'bills')).id), {
+      ...b, ownerId: C.user.uid, ownerName: C.user.displayName || 'Someone', shared: false, sentSig: null,
+      createdAt: F.serverTimestamp(), updatedAt: F.serverTimestamp(),
+    }))).then(() => storeBills([]), console.warn);
+  }
+  C.deleteBill = async id => {
+    try {
+      const ms = await F.getDocs(F.collection(db, 'bills', id, 'members'));
+      await Promise.all(ms.docs.map(d => F.deleteDoc(d.ref)));
+      await F.deleteDoc(pubRef(id)).catch(() => {});
+      await F.deleteDoc(billRef(id));
+    } catch (e) { console.warn(e); toast('Couldn\'t delete the bill'); }
+    C.renderBills();
+  };
+
   /* ---- host: history ---- */
   C.renderBills = async () => {
     const wrap = $('#billsWrap'), list = $('#billsList');
@@ -157,19 +176,10 @@ function init() {
         ...mine.docs.map(d => ({ id: d.id, host: true, ...d.data() })),
         ...joined.docs.map(d => ({ id: d.id, host: false, ...d.data() })),
       ].sort((a, b) => when(b) - when(a)).slice(0, 40);
-      if (!rows.length) { list.innerHTML = '<div class="muted">Bills you split will show up here.</div>'; return; }
-      list.innerHTML = rows.map(b => {
-        const date = new Date(when(b)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-        const done = b.host && b.peopleCount && b.paidCount >= b.peopleCount;
-        return `<div class="bill" data-id="${esc(b.id)}" data-host="${b.host ? 1 : ''}">
-          <div class="badge" style="background:${b.host ? 'var(--accent)' : '#8E5BD6'}">${b.host ? '🧾' : '👋'}</div>
-          <div class="grow"><strong>${esc(b.host ? (b.note || 'Dinner') : (b.title || 'Dinner'))}</strong>
-            <div class="muted">${date} · ${b.host ? (b.peopleCount ? (done ? '✓ Everyone paid' : `${b.paidCount || 0} of ${b.peopleCount} paid`) : 'Draft')
-                                                   : `${esc(b.ownerName || 'A friend')}'s bill`}</div></div>
-          <div style="font-weight:700">${b.host ? money(b.total || 0) : ''}</div></div>`;
-      }).join('');
-      list.querySelectorAll('.bill').forEach(el => el.onclick = () =>
-        el.dataset.host ? C.openBill(el.dataset.id) : (location.hash = '#join/' + el.dataset.id));
+      drawBills(rows.map(b => ({ ...b, when: when(b) })),
+        b => b.host ? C.openBill(b.id) : (location.hash = '#join/' + b.id),
+        b => b.host ? C.deleteBill(b.id)
+          : F.deleteDoc(F.doc(db, 'users', C.user.uid, 'joined', b.id)).catch(console.warn).then(C.renderBills));
     } catch (e) { console.warn(e); list.innerHTML = '<div class="muted">Couldn\'t load your bills.</div>'; }
   };
   C.openBill = async id => {
