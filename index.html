@@ -86,6 +86,9 @@ textarea:focus,input:focus{border-color:var(--accent)}
 .amt{font-size:24px;font-weight:800;color:var(--accent);letter-spacing:-.5px}
 .paidchip{margin-top:6px;min-height:34px;font-size:13px;padding:0 10px;white-space:nowrap}
 .paidchip.on{background:var(--accent)}
+.paidbtn{margin-top:6px;width:100%;min-height:38px}
+.paidbtn.on{background:var(--accent);color:var(--accent-ink)}
+.paidPanel{padding:4px 0 10px 52px}
 .res.isPaid .amt{color:var(--muted);text-decoration:line-through}
 .bar{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));
   background:linear-gradient(transparent,var(--bg) 30%)}
@@ -129,7 +132,7 @@ textarea:focus,input:focus{border-color:var(--accent)}
   <!-- 0: Welcome -->
   <section data-screen="0">
     <h1>Split the bill in a minute.</h1>
-    <p class="sub">Works right on your phone. Your receipt photo never leaves it.</p>
+    <p class="sub">Works right on your phone. Sign in to save bills and share one link with the group.</p>
     <div class="how">
       <div><b>📸</b><span><strong>Snap</strong> the receipt</span></div>
       <div><b>👆</b><span><strong>Tap</strong> who had what</span></div>
@@ -287,13 +290,16 @@ function saveLocal(){
   const hasContent = S.items.some(i => i.price) || S.people.filter(p => !p.me).length;
   if (!hasContent && !S.billId) return;                 // don't save empty bills
   if (!S.billId) S.billId = 'l_' + id();
-  const rows = allPeople().length ? compute() : [], others = rows.filter(r => !r.me);
-  const b = { id:S.billId, note:S.note || '', items:S.items, people:S.people, adj:S.adj, tax:S.tax || 0, tip:S.tip || 0, tipPct:S.tipPct ?? null,
+  const rows = allPeople().length ? compute() : [], others = rows.filter(r => !r.me && r.total);
+  const b = { id:S.billId, note:S.note || '', items:S.items, people:S.people, adj:S.adj, amounts:Object.fromEntries(rows.map(r => [r.id, r.total])), tax:S.tax || 0, tip:S.tip || 0, tipPct:S.tipPct ?? null,
     mode:S.mode, total:rows.reduce((a, r) => a + r.total, 0), peopleCount:others.length, paidCount:others.filter(r => r.paid).length, updatedAt:Date.now() };
   storeBills([b, ...loadBills().filter(x => x.id !== b.id)]);
 }
 // Home screen list. rows: {id, host, note | title, ownerName, total, peopleCount, paidCount, when}
-function drawBills(rows, open, del){
+const openPaid = new Set();   // bills showing their paid checklist on the home screen
+// Who's paid on a saved bill (people other than you, with what they owe)
+const billDebtors = b => (b.people || []).filter(p => !p.me && (b.amounts ? b.amounts[p.id] : 1));
+function drawBills(rows, open, del, setPaid){
   const list = $('#billsList');
   if (!rows.length) { list.innerHTML = '<div class="muted">Bills you split will show up here.</div>'; return; }
   list.innerHTML = rows.map((b, i) => {
@@ -302,11 +308,22 @@ function drawBills(rows, open, del){
     return `<div class="bill" data-i="${i}">
       <div class="badge" style="background:${b.host ? 'var(--accent)' : '#8E5BD6'}">${b.host ? '🧾' : '👋'}</div>
       <div class="grow"><strong>${esc(b.host ? (b.note || 'Dinner') : (b.title || 'Dinner'))}</strong>
-        <div class="muted">${date} · ${b.host ? (b.peopleCount && b.total ? (done ? '✓ Everyone paid' : `${b.paidCount || 0} of ${b.peopleCount} paid`) : 'Draft')
-                                               : `${esc(b.ownerName || 'A friend')}'s bill`}</div></div>
+        <div class="muted">${date}${b.host ? (b.peopleCount && b.total ? '' : ' · Draft') : ` · ${esc(b.ownerName || 'A friend')}'s bill`}</div>
+        ${b.host && b.peopleCount && b.total && setPaid ? `<button class="chip paidchip ${done ? 'on' : ''}" data-pl="${i}">${done ? '✓ Everyone paid' : `${b.paidCount || 0} of ${b.peopleCount} paid`} ${openPaid.has(b.id) ? '▴' : '▾'}</button>` : ''}</div>
       <div style="font-weight:700">${b.host ? money(b.total || 0) : ''}</div>
-      <button class="x" data-del="${i}" aria-label="Delete">×</button></div>`;
+      <button class="x" data-del="${i}" aria-label="Delete">×</button></div>
+      ${openPaid.has(b.id) ? `<div class="paidPanel">${billDebtors(b).map(p => `
+        <button class="mine ${p.paid ? 'on' : ''}" data-pi="${i}" data-pid="${esc(p.id)}"><span class="box">${p.paid ? '✓' : ''}</span>
+          <span class="grow">${esc(p.name)}</span><span class="muted">${b.amounts ? money(b.amounts[p.id]) : ''}</span></button>`).join('')}</div>` : ''}`;
   }).join('');
+  list.querySelectorAll('[data-pl]').forEach(c => c.onclick = e => {
+    e.stopPropagation(); const id = rows[+c.dataset.pl].id;
+    openPaid.has(id) ? openPaid.delete(id) : openPaid.add(id); drawBills(rows, open, del, setPaid);
+  });
+  list.querySelectorAll('[data-pid]').forEach(c => c.onclick = () => {
+    const b = rows[+c.dataset.pi], p = b.people.find(x => x.id === c.dataset.pid);
+    setPaid(b, p.id, !p.paid);
+  });
   list.querySelectorAll('.bill').forEach(el => el.onclick = e => {
     const b = rows[+el.dataset.i];
     if (!e.target.closest('[data-del]')) return open(b);
@@ -318,7 +335,13 @@ function renderBills(){
   if (cloud()) return cloud().renderBills();
   drawBills(loadBills().map(b => ({...b, host:true, when:b.updatedAt})),
     b => { loadBill(b); go(S.people.length && S.items.some(i => i.price) ? 3 : 1); },
-    b => { storeBills(loadBills().filter(x => x.id !== b.id)); renderBills(); });
+    b => { storeBills(loadBills().filter(x => x.id !== b.id)); renderBills(); },
+    (b, pid, on) => {
+      const list = loadBills(), x = list.find(y => y.id === b.id); if (!x) return;
+      x.people.forEach(p => { if (p.id === pid) p.paid = on; });
+      x.paidCount = billDebtors(x).filter(p => p.paid).length;
+      storeBills(list); renderBills();
+    });
 }
 
 function loadSaved(){ try { return JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch(e){ return []; } }
@@ -862,7 +885,7 @@ function renderResults(){
     (charged !== grand ? `<div class="warn" style="margin-top:8px">Amounts add up to ${money(charged)}, but the bill is ${money(grand)}. Check the amounts you set.</div>` : '');
   const pay = loadPay(), zelle = pay.method === 'zelle' && pay.zelle;
   if (pay.method === 'zelle') rows.forEach(r => r.venmo = '');   // Zelle has no request links
-  const others = rows.filter(r => !r.me), paidN = others.filter(r => r.paid).length;
+  const others = rows.filter(r => !r.me && r.total), paidN = others.filter(r => r.paid).length;
   $('#resList').innerHTML = rows.map((r,k) => {
     const venmo = (txn, amt) => `https://venmo.com/?txn=${txn}&audience=private&recipients=${encodeURIComponent(r.venmo)}&amount=${(amt/100).toFixed(2)}&note=${encodeURIComponent(note)}`;
     const req = ((S.adj || {})[r.id] || {}).requested, diff = req != null ? r.total - req : 0;
@@ -877,14 +900,14 @@ function renderResults(){
     const how = r.coveredBy ? `🎁 Covered by ${esc(r.coveredBy)}`
       : ((S.adj || {})[r.id] || {}).fixed != null ? `Set amount${r.base !== r.total ? ` · was ${money(r.base)}` : ''}`
       : `${money(r.food)} + ${money(r.tax)} tax + ${money(r.tip)} tip${r.base !== r.total && !r.covering ? ' · adjusted' : ''}`;
-    const paidBtn = r.me || r.coveredBy ? '' : `<button class="chip paidchip ${r.paid?'on':''}" data-paid="${k}">${r.paid ? '✓ Paid' : r.iPaid ? 'Says paid · confirm' : 'Mark paid'}</button>`;
+    const paidBtn = r.me || r.coveredBy ? '' : `<button class="btn small paidbtn ${r.paid ? 'on' : 'sec'}" data-paid="${k}">${r.paid ? '✓ Paid' : r.iPaid ? 'Says paid · confirm' : 'Mark paid'}</button>`;
     return `<div class="res ${r.paid?'isPaid':''}">
       <div class="badge" style="background:${r.color}">${initial(r.name)}</div>
       <div class="grow"><strong>${esc(r.name)}</strong> ${r.me ? '<span class="tag">you</span>' : ''}
         <div class="muted">${how}${r.covering ? `<br>Includes ${esc(r.covering.join(', '))}` : ''}</div>
-        ${paidBtn} <button class="chip paidchip" data-edit="${k}">✏️ Edit</button></div>
-      <div style="text-align:right">
-        <div class="amt">${money(r.total)}</div>${reqNote}${r.paid ? '' : action}
+        <button class="chip paidchip" data-edit="${k}">✏️ Edit</button></div>
+      <div style="text-align:right;min-width:118px">
+        <div class="amt">${money(r.total)}</div>${reqNote}${r.paid ? '' : action.replace('style="margin-top:6px"', 'style="margin-top:6px;width:100%"')}${paidBtn}
       </div></div>`;
   }).join('') + (others.length ? `<div class="muted" style="margin-top:12px;text-align:center">${paidN} of ${others.length} paid</div>` : '');
   $('#resList').querySelectorAll('[data-copy]').forEach(b => b.onclick = () => {

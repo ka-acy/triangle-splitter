@@ -92,7 +92,7 @@ function init() {
     if (!hasContent && !S.billId) return;                 // don't save empty bills
     const isNew = !S.billId;
     if (isNew) S.billId = F.doc(F.collection(db, 'bills')).id;
-    const rows = compute(), others = rows.filter(r => !r.me);
+    const rows = compute(), others = rows.filter(r => !r.me && r.total);
     const data = {
       ownerId: C.user.uid, ownerName: C.user.displayName || 'Someone',
       note: S.note || '', items: S.items.map(i => ({ id: i.id, name: i.name || '', price: i.price || 0, who: i.who || [], shares: i.shares || {} })),
@@ -100,6 +100,7 @@ function init() {
       adj: S.adj || {}, tax: S.tax || 0, tip: S.tip || 0, tipPct: S.tipPct ?? null, mode: S.mode, shared: !!S.shared, sentSig: S.sentSig || null,
       public: !!S.public, hasPhoto: !!S.photo,
       total: rows.reduce((a, r) => a + r.total, 0), peopleCount: others.length, paidCount: others.filter(r => r.paid).length,
+      amounts: Object.fromEntries(rows.map(r => [r.id, r.total])),
       updatedAt: F.serverTimestamp(),
     };
     if (isNew) data.createdAt = F.serverTimestamp();
@@ -177,6 +178,19 @@ function init() {
       createdAt: F.serverTimestamp(), updatedAt: F.serverTimestamp(),
     }))).then(() => storeBills([]), console.warn);
   }
+  // Check someone off from the home screen list (host only: the rules only let the owner update a bill)
+  C.setBillPaid = async (b, pid, on) => {
+    const people = b.people.map(p => p.id === pid ? { ...p, paid: on } : p);
+    const paidCount = billDebtors({ ...b, people }).filter(p => p.paid).length;
+    try {
+      await F.updateDoc(billRef(b.id), { people, paidCount });
+      if (b.public) {   // keep the shared link in step
+        const name = people.find(p => p.id === pid).name, ref = viewRef(b.id, 'summary'), s = await F.getDoc(ref);
+        if (s.exists()) await F.updateDoc(ref, { people: s.data().people.map(p => p.name === name && !p.me ? { ...p, paid: on } : p) });
+      }
+    } catch (e) { console.warn(e); toast('Couldn\'t update that bill'); }
+    C.renderBills();
+  };
   C.deleteBill = async id => {
     try {
       const ms = await F.getDocs(F.collection(db, 'bills', id, 'members'));
@@ -207,7 +221,8 @@ function init() {
       drawBills(rows.map(b => ({ ...b, when: when(b) })),
         b => b.host ? C.openBill(b.id) : (location.hash = '#join/' + b.id),
         b => b.host ? C.deleteBill(b.id)
-          : F.deleteDoc(F.doc(db, 'users', C.user.uid, 'joined', b.id)).catch(console.warn).then(C.renderBills));
+          : F.deleteDoc(F.doc(db, 'users', C.user.uid, 'joined', b.id)).catch(console.warn).then(C.renderBills),
+        C.setBillPaid);
     } catch (e) { console.warn(e); list.innerHTML = '<div class="muted">Couldn\'t load your bills.</div>'; }
   };
   C.openBill = async id => {
