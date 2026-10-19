@@ -33,9 +33,7 @@ function init() {
         const d = snap.exists() ? snap.data() : {};
         C.profile = { venmo: d.venmo || '', savedPeople: d.savedPeople || [] };
         // merge friends saved on this device with friends saved on the account
-        const merged = [...loadSaved()];
-        for (const p of C.profile.savedPeople) if (!merged.some(x => x.name.toLowerCase() === p.name.toLowerCase())) merged.push(p);
-        storeSaved(merged);
+        mergeFriends(C.profile.savedPeople, d.removedPeople || []);
         C.syncSaved();
       } catch (e) { console.warn(e); }
       closeSheet();
@@ -71,8 +69,8 @@ function init() {
   /* ---- profile ---- */
   C.syncSaved = () => {
     if (!C.user) return;
-    const list = loadSaved().slice(0, 30);
-    F.setDoc(userRef(C.user.uid), { savedPeople: list, updatedAt: F.serverTimestamp() }, { merge: true }).catch(console.warn);
+    const list = loadSaved().slice(0, 50);
+    F.setDoc(userRef(C.user.uid), { savedPeople: list, removedPeople: loadRemoved(), updatedAt: F.serverTimestamp() }, { merge: true }).catch(console.warn);
   };
   C.setVenmo = v => {
     C.profile.venmo = v;

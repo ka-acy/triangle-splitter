@@ -111,7 +111,7 @@ textarea:focus,input:focus{border-color:var(--accent)}
 .bill{display:flex;gap:12px;align-items:center;padding:12px 0;border-top:1px solid var(--line);cursor:pointer}
 .bill:first-child{border-top:0;padding-top:0}
 .sheet{position:fixed;inset:0;background:rgba(20,15,5,.45);z-index:20;display:flex;align-items:flex-end;justify-content:center}
-.sheet > div{background:var(--card);width:100%;max-width:560px;border-radius:24px 24px 0 0;padding:22px 16px calc(22px + env(safe-area-inset-bottom))}
+.sheet > div{background:var(--card);width:100%;max-width:560px;border-radius:24px 24px 0 0;padding:22px 16px calc(22px + env(safe-area-inset-bottom));max-height:88vh;overflow-y:auto}
 .gbtn{background:#fff;color:#1f1f1f;border:1.5px solid #dadce0}
 .abtn{background:#000;color:#fff}
 @media (prefers-color-scheme: dark){.abtn{background:#fff;color:#000}}
@@ -174,8 +174,8 @@ textarea:focus,input:focus{border-color:var(--accent)}
         <input id="pVenmo" placeholder="@venmo (optional)" autocomplete="off" autocapitalize="off">
       </div>
       <button class="btn small" id="addPerson" style="margin-top:10px;width:100%">Add person</button>
-      <div class="saved hidden" id="savedWrap">
-        <div class="muted" style="margin:14px 0 8px">Recent</div>
+      <div class="saved">
+        <div class="row" style="margin-top:6px"><span class="muted grow" id="savedLabel">Suggested</span><button class="ghost" id="friendsBtn">👥 Friends</button></div>
         <div class="chips" id="savedChips"></div>
       </div>
     </div>
@@ -267,7 +267,7 @@ const $ = s => document.querySelector(s);
 const COLORS = ['#E2683C','#2F7DD1','#8E5BD6','#D1447A','#C99417','#16958F','#5A6B7D','#B5582D'];
 const LS_KEY = 'splitit.people';
 const S = { screen:0, people:[], items:[], tax:0, tip:0, tipPct:null, mode:'prop', receiptTotal:null,
-            note:'', billId:null, shared:false, members:[], sentSig:null, msgMode:null, msgEdited:false };
+            note:'', billId:null, shared:false, members:[], sentSig:null, msgMode:null, msgEdited:false, counted:[] };
 const id = () => Math.random().toString(36).slice(2, 10);
 const money = c => (c<0?'-':'') + '$' + (Math.abs(c)/100).toFixed(2);
 const toCents = v => { const n = parseFloat(String(v).replace(/[^0-9.\-]/g,'')); return isNaN(n) ? 0 : Math.round(n*100); };
@@ -278,12 +278,56 @@ function toast(m){ const t=$('#toast'); t.textContent=m; t.classList.add('show')
 function changed(){ cloud() && cloud().queueSave(); }
 
 function loadSaved(){ try { return JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch(e){ return []; } }
-function storeSaved(list){ try { localStorage.setItem(LS_KEY, JSON.stringify(list.slice(0,30))); } catch(e){} }
+function storeSaved(list){ try { localStorage.setItem(LS_KEY, JSON.stringify(list.slice(0,50))); } catch(e){} }
+// Friends: {name, venmo, t: last changed, n: bills together, last: last bill, with: {friend: bills together}}
+const RM_KEY = 'splitit.removed';
+const lc = s => String(s || '').trim().toLowerCase();
+function loadRemoved(){ try { return JSON.parse(localStorage.getItem(RM_KEY)) || []; } catch(e){ return []; } }
+function storeRemoved(list){ try { localStorage.setItem(RM_KEY, JSON.stringify(list.slice(0,50))); } catch(e){} }
+function tombstone(k){ storeRemoved([{k, at:Date.now()}, ...loadRemoved().filter(r => r.k !== k)]); }
+function friendsChanged(){ cloud() && cloud().syncSaved(); if (S.screen === 1) renderPeople(); }
 function savePerson(p){
-  const list = loadSaved().filter(x => x.name.toLowerCase() !== p.name.toLowerCase());
-  list.unshift({name:p.name, venmo:p.venmo||''});
-  storeSaved(list);
+  const list = loadSaved(), old = list.find(x => lc(x.name) === lc(p.name)) || {};
+  storeSaved([{...old, name:p.name, venmo:p.venmo || old.venmo || '', t:Date.now()}, ...list.filter(x => x !== old)]);
+  storeRemoved(loadRemoved().filter(r => r.k !== lc(p.name)));
   cloud() && cloud().syncSaved();
+}
+// Combine this phone's friends with the account's; a removal wins over anything saved before it
+function mergeFriends(list, removed){
+  const rm = {};
+  for (const r of [...loadRemoved(), ...removed]) rm[r.k] = Math.max(rm[r.k] || 0, r.at);
+  const out = [];
+  for (const p of [...loadSaved(), ...list]) {
+    const k = lc(p.name); if ((rm[k] || 0) > (p.t || 0)) continue;
+    const m = out.find(x => lc(x.name) === k);
+    if (!m) out.push({...p}); else if ((p.t || 0) > (m.t || 0)) Object.assign(m, p);
+  }
+  storeSaved(out);
+  storeRemoved(Object.entries(rm).map(([k, at]) => ({k, at})).sort((a, b) => b.at - a.at));
+}
+// Count each friend once per bill, plus who they came with, so Suggested learns your regular groups
+function recordBill(){
+  const here = S.people.filter(p => !p.me).map(p => lc(p.name));
+  if (here.every(k => S.counted.includes(k))) return;
+  const list = loadSaved(), now = Date.now();
+  for (const f of list) {
+    const k = lc(f.name); if (!here.includes(k)) continue;
+    const isNew = !S.counted.includes(k);
+    if (isNew) { f.n = (f.n || 0) + 1; f.last = now; f.t = now; }
+    const w = f.with || {};
+    for (const o of here) if (o !== k && (isNew || !S.counted.includes(o))) w[o] = (w[o] || 0) + 1;
+    f.with = Object.fromEntries(Object.entries(w).sort((a, b) => b[1] - a[1]).slice(0, 10));
+  }
+  S.counted = [...new Set([...S.counted, ...here])];
+  storeSaved(list); cloud() && cloud().syncSaved();
+}
+// Suggested: friends you split with often and lately, boosted if they usually come with who's already added
+function suggestions(ppl){
+  const here = ppl.map(p => lc(p.name)), now = Date.now();
+  return loadSaved().filter(s => !here.includes(lc(s.name)))
+    .map((s, i) => ({s, score: here.reduce((a, h) => a + ((s.with || {})[h] || 0) * 3, 0) + (s.n || 0)
+      + (s.last ? 4 * Math.pow(0.5, (now - s.last) / (30 * 864e5)) : 0) - i * 0.001}))
+    .sort((a, b) => b.score - a.score).map(x => x.s);
 }
 
 /* ---------- People model (local people + friends who joined by link) ---------- */
@@ -328,13 +372,14 @@ $('#next').onclick = () => {
     if (un.length && !confirm(`${un.length} item${un.length>1?'s are':' is'} not assigned to anyone. Split ${un.length>1?'them':'it'} among everyone?`)) return;
   }
   if (S.screen === 3) { if (cloud()) { cloud().flush(); reset(); toast('Saved to Your bills'); } else if (confirm('Start a new bill?')) reset(); return; }
+  if (S.screen === 1) recordBill();
   go(S.screen + 1);
 };
 $('#restart').onclick = () => { if (confirm(cloud() ? 'Start a new bill? This one stays in Your bills.' : 'Start over? This clears the current bill.')) reset(); };
 function reset(){
   cloud() && cloud().closeBill();
   Object.assign(S, {people:[], items:[], tax:0, tip:0, tipPct:null, mode:'prop', receiptTotal:null, note:'',
-    billId:null, shared:false, members:[], sentSig:null, msgMode:null, msgEdited:false});
+    billId:null, shared:false, members:[], sentSig:null, msgMode:null, msgEdited:false, counted:[]});
   $('#tax').value=''; $('#tip').value=''; $('#note').value=''; $('#scanCard').classList.add('hidden'); $('#scanWarn').classList.add('hidden');
   $('#cam').value=''; setTipSeg(); setModeSeg(); go(0);
 }
@@ -346,7 +391,8 @@ function ensureMe(){
 // Load a saved bill (from the cloud) into the editor
 function loadBill(b){
   Object.assign(S, { people:b.people||[], items:b.items||[], tax:b.tax||0, tip:b.tip||0, tipPct:b.tipPct ?? null,
-    mode:b.mode||'prop', note:b.note||'', billId:b.id, shared:!!b.shared, sentSig:b.sentSig||null, receiptTotal:null, msgEdited:false, msgMode:null });
+    mode:b.mode||'prop', note:b.note||'', billId:b.id, shared:!!b.shared, sentSig:b.sentSig||null, receiptTotal:null, msgEdited:false, msgMode:null,
+    counted:(b.people||[]).map(p => lc(p.name)) });
   $('#tax').value = S.tax ? (S.tax/100).toFixed(2) : ''; $('#tip').value = S.tip ? (S.tip/100).toFixed(2) : '';
   $('#note').value = S.note; setTipSeg(); setModeSeg();
 }
@@ -455,6 +501,7 @@ function addPerson(name, venmo){
   name = name.trim(); venmo = (venmo||'').trim().replace(/^@/,'');
   if (!name) return;
   if (allPeople().some(p => p.name.toLowerCase() === name.toLowerCase())) { toast(name + ' is already added'); return; }
+  if (!venmo) venmo = (loadSaved().find(x => lc(x.name) === lc(name)) || {}).venmo || '';
   const p = {id:id(), name, venmo};
   S.people.push(p); savePerson(p); changed(); renderPeople();
 }
@@ -469,9 +516,9 @@ $('#inviteBtn').onclick = async () => {
 function renderPeople(){
   $('#inviteCard').classList.toggle('hidden', !cloud());
   const ppl = allPeople();
-  const saved = loadSaved().filter(s => !ppl.some(p => p.name.toLowerCase() === s.name.toLowerCase()));
-  $('#savedWrap').classList.toggle('hidden', !saved.length);
-  $('#savedChips').innerHTML = saved.slice(0,12).map((s,i) => `<button class="chip" data-i="${i}">+ ${esc(s.name)}</button>`).join('');
+  const saved = suggestions(ppl).slice(0,8);
+  $('#savedLabel').textContent = saved.length ? 'Suggested' : loadSaved().length ? 'Everyone in Friends is added' : 'People you add are saved to Friends';
+  $('#savedChips').innerHTML = saved.map((s,i) => `<button class="chip" data-i="${i}">+ ${esc(s.name)}</button>`).join('');
   $('#savedChips').querySelectorAll('button').forEach(b => b.onclick = () => { const s = saved[+b.dataset.i]; addPerson(s.name, s.venmo); });
   $('#peopleCard').classList.toggle('hidden', !ppl.length);
   $('#peopleList').innerHTML = ppl.map(p => `
@@ -487,6 +534,64 @@ function renderPeople(){
     changed(); renderPeople();
   });
   updateNext();
+}
+
+/* ---------- Friends ---------- */
+$('#friendsBtn').onclick = () => openFriends();
+function openFriends(){
+  const list = loadSaved().sort((a, b) => a.name.localeCompare(b.name));
+  const onBill = f => allPeople().some(p => lc(p.name) === lc(f.name));
+  openSheet(`<h2>Friends</h2>
+    <p class="muted" style="margin:0 0 12px">${cloud() ? 'Synced to your account.' : 'Saved on this phone. Sign in to keep them on every device.'}</p>
+    <div class="row"><input id="fName" placeholder="Name" autocomplete="off"><input id="fVenmo" placeholder="@venmo (optional)" autocomplete="off" autocapitalize="off"></div>
+    <button class="btn small" id="fAdd" style="margin-top:10px;width:100%">Add friend</button>
+    <div style="margin-top:14px">${list.length ? list.map((f, i) => `
+      <div class="person">
+        <div class="badge" style="background:${COLORS[i % COLORS.length]}">${initial(f.name)}</div>
+        <div class="grow"><div><strong>${esc(f.name)}</strong></div>
+          <div class="muted">${f.venmo ? '@' + esc(f.venmo) : 'No Venmo'}${f.n ? ` · ${f.n} bill${f.n > 1 ? 's' : ''}` : ''}</div></div>
+        ${S.screen === 1 ? (onBill(f) ? '<span class="tag">on bill</span>' : `<button class="chip" data-add="${i}">+ Add</button>`) : ''}
+        <button class="ghost" data-edit="${i}">Edit</button>
+      </div>`).join('') : '<p class="muted">No friends yet. Anyone you add to a bill is saved here too.</p>'}</div>
+    <button class="btn sec" id="fDone" style="margin-top:14px">Done</button>`);
+  const body = $('#sheetBody');
+  $('#fAdd').onclick = () => {
+    const n = $('#fName').value.trim(), v = $('#fVenmo').value.trim().replace(/^@/, '');
+    if (!n) return;
+    if (loadSaved().some(x => lc(x.name) === lc(n))) { toast(n + ' is already a friend'); return; }
+    savePerson({name:n, venmo:v}); friendsChanged(); openFriends();
+  };
+  $('#fName').onkeydown = $('#fVenmo').onkeydown = e => { if (e.key === 'Enter') $('#fAdd').click(); };
+  $('#fDone').onclick = closeSheet;
+  body.querySelectorAll('[data-add]').forEach(b => b.onclick = () => { const f = list[+b.dataset.add]; addPerson(f.name, f.venmo); openFriends(); });
+  body.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
+    const f = list[+b.dataset.edit], row = b.closest('.person');
+    row.innerHTML = `<div class="grow">
+      <div class="row"><input class="eN" value="${esc(f.name)}" autocomplete="off"><input class="eV" value="${esc(f.venmo ? '@' + f.venmo : '')}" placeholder="@venmo (optional)" autocomplete="off" autocapitalize="off"></div>
+      <div class="row" style="margin-top:8px"><button class="btn small grow eS">Save</button><button class="btn sec small eD">Remove</button></div></div>`;
+    row.querySelector('.eS').onclick = () => { if (editFriend(f.name, row.querySelector('.eN').value, row.querySelector('.eV').value)) openFriends(); };
+    row.querySelector('.eD').onclick = () => { if (confirm(`Remove ${f.name} from Friends?`)) { removeFriend(f.name); openFriends(); } };
+  });
+}
+function editFriend(oldName, name, venmo){
+  name = name.trim(); venmo = venmo.trim().replace(/^@/, '');
+  if (!name) return false;
+  const o = lc(oldName), k = lc(name), list = loadSaved();
+  if (k !== o && list.some(x => lc(x.name) === k)) { toast(name + ' is already a friend'); return false; }
+  for (const f of list) {
+    if (lc(f.name) === o) Object.assign(f, {name, venmo, t:Date.now()});
+    if (k !== o && f.with && f.with[o]) { f.with[k] = f.with[o]; delete f.with[o]; }
+  }
+  storeSaved(list);
+  if (k !== o) tombstone(o);
+  friendsChanged(); return true;
+}
+function removeFriend(name){
+  const k = lc(name);
+  const list = loadSaved().filter(x => lc(x.name) !== k);
+  list.forEach(f => { if (f.with) delete f.with[k]; });
+  storeSaved(list);
+  tombstone(k); friendsChanged();
 }
 
 /* ---------- Items ---------- */
