@@ -98,7 +98,7 @@ function init() {
       note: S.note || '', items: S.items.map(i => ({ id: i.id, name: i.name || '', price: i.price || 0, who: i.who || [], shares: i.shares || {} })),
       people: S.people.map(p => ({ id: p.id, name: p.name, venmo: p.venmo || '', me: !!p.me, paid: !!p.paid })),
       adj: S.adj || {}, tax: S.tax || 0, tip: S.tip || 0, tipPct: S.tipPct ?? null, mode: S.mode, shared: !!S.shared, sentSig: S.sentSig || null,
-      public: !!S.public, hasPhoto: !!S.photo,
+      public: !!S.public, hasPhoto: !!(S.photo || S.hasPhoto),   // the photo may still be loading
       total: rows.reduce((a, r) => a + r.total, 0), peopleCount: others.length, paidCount: others.filter(r => r.paid).length,
       amounts: Object.fromEntries(rows.map(r => [r.id, r.total])),
       updatedAt: F.serverTimestamp(),
@@ -115,7 +115,7 @@ function init() {
   // What the no-sign-in link shows: everyone's amounts, items, and how to pay the host
   function summary(rows) {
     return {
-      title: S.note || 'Dinner', ownerName: C.user.displayName || 'Your friend', hasPhoto: !!S.photo,
+      title: S.note || 'Dinner', ownerName: C.user.displayName || 'Your friend', hasPhoto: !!(S.photo || S.hasPhoto),
       pay: { method: C.profile.payMethod || 'venmo', venmo: C.profile.venmo || '', zelle: C.profile.zelle || '' },
       total: rows.reduce((a, r) => a + r.total, 0), tax: S.tax || 0, tip: S.tip || 0, mode: S.mode, math: mathData(rows),
       people: rows.map(r => ({
@@ -235,7 +235,12 @@ function init() {
     loadBill({ id, ...snap.data() });
     photoFor = id;   // already saved
     if (S.public) C.flush();   // refresh the shared link so it picks up anything new (amounts, See the math)
-    if (snap.data().hasPhoto) C.loadPhoto(id).then(p => { if (S.billId === id && p) { S.photo = p; showReceipt(); } });
+    // look for a saved photo even if the bill says it has none (an earlier version could clear that flag), and repair it
+    C.loadPhoto(id).then(p => {
+      if (S.billId !== id || !p) return;
+      S.photo = p; S.hasPhoto = true; showReceipt();
+      if (!snap.data().hasPhoto) C.flush();
+    });
     S.members = [];
     if (S.shared) { sharedFor = id; watchMembers(); }
     go(3);
