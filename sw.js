@@ -1,4 +1,4 @@
-// SplitIt service worker: keeps the app (and the receipt reader) available offline.
+// Triangle Splitter service worker: keeps the app (and the receipt reader) available offline.
 const VERSION = 'splitit-v2';
 const CORE = ['./', './index.html', './config.js', './cloud.js', './firebase.js', './manifest.json',
               './icon-192.png', './icon-512.png', './apple-touch-icon.png'];

@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>SplitIt</title>
+<title>Triangle Splitter</title>
 <meta name="description" content="Snap a receipt, tap who had what, request on Venmo.">
 <meta name="theme-color" content="#F6F1E7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#1C1A17" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="SplitIt">
+<meta name="apple-mobile-web-app-title" content="Triangle Splitter">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -126,7 +126,7 @@ textarea:focus,input:focus{border-color:var(--accent)}
 <body>
 <div class="wrap">
   <header>
-    <div class="brand" id="brand">Split<span>It</span></div>
+    <div class="brand" id="brand">Triangle<span>Splitter</span></div>
     <button class="ghost hidden" id="restart">Start over</button>
     <button class="ghost hidden" id="signInBtn">Sign in</button>
     <button class="avatar hidden" id="avatarBtn" aria-label="Account"></button>
@@ -509,8 +509,8 @@ $('#addPerson').onclick = () => { addPerson($('#pName').value, $('#pVenmo').valu
 $('#pName').onkeydown = $('#pVenmo').onkeydown = e => { if (e.key === 'Enter') $('#addPerson').click(); };
 $('#inviteBtn').onclick = async () => {
   const link = await cloud().ensureShared();
-  const text = `Join my SplitIt bill and tap what you had: ${link}`;
-  if (navigator.share) navigator.share({ title:'SplitIt', text, url: link }).catch(()=>{});
+  const text = `Join my Triangle Splitter bill and tap what you had: ${link}`;
+  if (navigator.share) navigator.share({ title:'Triangle Splitter', text, url: link }).catch(()=>{});
   else copy(link, 'Invite link copied');
 };
 function renderPeople(){
@@ -767,7 +767,7 @@ function signInButtons(){
 }
 function wireSignIn(root){ root.querySelectorAll('[data-signin]').forEach(b => b.onclick = () => window.Cloud.signIn(b.dataset.signin)); }
 $('#signInBtn').onclick = () => {
-  openSheet(`<h2>Sign in to SplitIt</h2>
+  openSheet(`<h2>Sign in to Triangle Splitter</h2>
     <p class="muted" style="margin:0 0 16px">Save your bills, keep your friends list on every device, track who's paid, and invite friends with a link.</p>
     ${signInButtons()}`);
   wireSignIn($('#sheetBody'));

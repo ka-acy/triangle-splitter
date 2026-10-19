@@ -1,4 +1,4 @@
-// SplitIt accounts + sync (Firebase). Loaded as a module after the main script.
+// Triangle Splitter accounts + sync (Firebase). Loaded as a module after the main script.
 // If config.js has no Firebase settings, this does nothing and the app runs in local-only mode.
 let F;  // Firebase SDK, loaded only when accounts are turned on
 
@@ -211,7 +211,7 @@ function init() {
     const owner = esc(pub.ownerName || 'Your friend'), first = esc((pub.ownerName || 'them').split(' ')[0]);
     const has = me.amount != null, claims = me.claims || [];
     const pay = has && pub.ownerVenmo
-      ? `https://venmo.com/?txn=pay&audience=private&recipients=${encodeURIComponent(pub.ownerVenmo)}&amount=${(me.amount / 100).toFixed(2)}&note=${encodeURIComponent(pub.title || 'SplitIt')}` : '';
+      ? `https://venmo.com/?txn=pay&audience=private&recipients=${encodeURIComponent(pub.ownerVenmo)}&amount=${(me.amount / 100).toFixed(2)}&note=${encodeURIComponent(pub.title || 'Triangle Splitter')}` : '';
     el.innerHTML = `
       <h1>${owner}'s bill</h1>
       <p class="sub">${esc(pub.title || '')}</p>

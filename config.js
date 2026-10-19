@@ -1,4 +1,4 @@
-// SplitIt settings.
+// Triangle Splitter settings.
 // Leave `firebase: null` to run without accounts (everything stays on the phone).
 // To turn on sign-in, paste your Firebase web app config here (see SETUP.md, step 3).
 window.SPLITIT_CONFIG = {

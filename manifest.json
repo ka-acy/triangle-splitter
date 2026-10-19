@@ -1,6 +1,6 @@
 {
-  "name": "SplitIt – Receipt Splitter",
-  "short_name": "SplitIt",
+  "name": "Triangle Splitter – Bill Splitter",
+  "short_name": "Triangle Splitter",
   "description": "Snap a receipt, tap who had what, request on Venmo.",
   "start_url": "./",
   "scope": "./",

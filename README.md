@@ -1,4 +1,4 @@
-# SplitIt
+# Triangle Splitter
 
 Snap a receipt, tap who had what, and request on Venmo. Installable web app (add to Home Screen), works offline, with optional Google sign-in for saved bills, paid tracking, and private invite links.
 

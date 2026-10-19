@@ -1,6 +1,6 @@
-# SplitIt setup
+# Triangle Splitter setup
 
-SplitIt works right away with no accounts. Everything stays on the phone.
+Triangle Splitter works right away with no accounts. Everything stays on the phone.
 To turn on **sign-in** (saved bills, sync, paid tracking, invite links), connect it to a free Firebase project.
 It takes about 15 minutes, once. Firebase's free plan is plenty for a friend group.
 
@@ -11,19 +11,19 @@ You'll edit two small text files: `config.js` and `_redirects`. Any text editor 
 ## 1. Put the site online and get your address
 
 1. Go to **app.netlify.com**, sign up free, then open **app.netlify.com/drop**.
-2. Drag the whole `SplitIt` folder onto the page.
+2. Drag the whole `splitit` folder onto the page.
 3. In **Site configuration → Change site name**, pick a name, e.g. `splitit-chang`.
    Your address is now `https://splitit-chang.netlify.app`. You'll need it below. (Replace `splitit-chang` with yours everywhere.)
 
 ## 2. Create the Firebase project
 
 1. Go to **console.firebase.google.com** and sign in with Google.
-2. **Create a project** → name it `SplitIt` → you can turn off Google Analytics → **Create**.
+2. **Create a project** → name it `Triangle Splitter` → you can turn off Google Analytics → **Create**.
 3. Note the **Project ID** shown under the name (e.g. `splitit-4f2a1`). You'll need it in step 5.
 
 ## 3. Connect the app (config.js)
 
-1. On the project home page, click the **</>** (Web) icon. Nickname: `SplitIt`. Don't check Hosting. **Register app**.
+1. On the project home page, click the **</>** (Web) icon. Nickname: `Triangle Splitter`. Don't check Hosting. **Register app**.
 2. Firebase shows a block like `const firebaseConfig = { apiKey: "...", ... }`.
 3. Open `config.js` and replace `firebase: null,` with those values, like this:
 
@@ -56,7 +56,7 @@ Open `_redirects` and replace `YOUR-PROJECT-ID` with your Project ID from step 2
 
 Then allow that address in Google's settings:
 
-1. Go to **console.cloud.google.com**, and pick your SplitIt project at the top.
+1. Go to **console.cloud.google.com**, and pick your Triangle Splitter project at the top.
 2. **APIs & Services → Credentials** → click **Web client (auto created by Google Service)**.
 3. Under **Authorized redirect URIs**, **Add URI**: `https://splitit-chang.netlify.app/__/auth/handler` → **Save**.
 
@@ -69,7 +69,7 @@ These rules are what make sure friends only ever see their own amount.
 
 ## 7. Upload again
 
-In Netlify, open your site → **Deploys** → drag the `SplitIt` folder onto the page again.
+In Netlify, open your site → **Deploys** → drag the `splitit` folder onto the page again.
 Open your address on your iPhone, tap **Sign in**, and you're set. (If you'd already added it to your Home Screen, open it once in Safari first so it picks up the new version.)
 
 ---
