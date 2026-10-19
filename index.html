@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SplitIt</title>
+<meta name="description" content="Snap a receipt, tap who had what, request on Venmo.">
+<meta name="theme-color" content="#F6F1E7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1C1A17" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="SplitIt">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+:root{
+  --bg:#F6F1E7; --card:#FFFDF8; --ink:#25221D; --muted:#7A7266; --line:#E7DFD0;
+  --accent:#1F8A5B; --accent-ink:#fff; --accent-soft:#DDF0E5; --danger:#C2482F;
+  --shadow:0 2px 10px rgba(60,45,20,.07),0 1px 2px rgba(60,45,20,.05);
+  --r:20px;
+}
+@media (prefers-color-scheme: dark){
+  :root{--bg:#1C1A17;--card:#272420;--ink:#F2EDE4;--muted:#A69D8F;--line:#3A352E;
+    --accent:#3FBF83;--accent-ink:#10251A;--accent-soft:#1F3A2C;--danger:#E9775E;
+    --shadow:0 2px 10px rgba(0,0,0,.3);}
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif}
+body{padding:env(safe-area-inset-top) 0 calc(110px + env(safe-area-inset-bottom))}
+.wrap{max-width:560px;margin:0 auto;padding:0 16px}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 0 8px;gap:8px}
+.brand{font-weight:800;font-size:24px;letter-spacing:-.5px;flex:1;cursor:pointer}
+.brand span{color:var(--accent)}
+.ghost{background:none;border:0;color:var(--accent);font:inherit;font-weight:600;padding:10px 4px;cursor:pointer}
+.avatar{width:38px;height:38px;border-radius:50%;border:0;background:var(--accent);color:var(--accent-ink);font-weight:800;font-size:16px;cursor:pointer}
+.steps{display:flex;gap:6px;margin:4px 0 18px}
+.steps i{flex:1;height:5px;border-radius:5px;background:var(--line);transition:background .25s}
+.steps i.on{background:var(--accent)}
+h1{font-size:28px;letter-spacing:-.6px;margin:6px 0 6px;line-height:1.15}
+h2{font-size:18px;margin:0 0 10px}
+p.sub{color:var(--muted);margin:0 0 18px}
+.card{background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);padding:16px;margin-bottom:14px}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:54px;
+  border:0;border-radius:16px;font:inherit;font-weight:700;font-size:17px;cursor:pointer;
+  background:var(--accent);color:var(--accent-ink);text-decoration:none}
+.btn.sec{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
+.btn.small{min-height:44px;font-size:15px;width:auto;padding:0 16px}
+.btn:disabled{opacity:.45}
+.row{display:flex;gap:10px;align-items:center}
+.row > *{min-width:0}
+textarea,input{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1.5px solid var(--line);
+  border-radius:12px;padding:12px;width:100%;outline:none}
+input{min-height:48px}
+textarea{resize:vertical;line-height:1.45}
+textarea:focus,input:focus{border-color:var(--accent)}
+.how{display:grid;gap:12px;margin:8px 0 22px}
+.how div{display:flex;gap:14px;align-items:center}
+.how b{flex:none;width:40px;height:40px;border-radius:12px;background:var(--accent-soft);color:var(--accent);
+  display:grid;place-items:center;font-size:18px}
+.hero{display:grid;gap:12px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1.5px solid var(--line);background:transparent;color:var(--ink);border-radius:999px;
+  min-height:40px;padding:0 14px;font:inherit;font-size:15px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.chip.on{color:#fff;border-color:transparent}
+.chip.all{border-style:dashed}
+.chip:disabled{opacity:.5}
+.person{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+.person:first-child{border-top:0}
+.badge{flex:none;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:800}
+.grow{flex:1;min-width:0}
+.muted{color:var(--muted);font-size:14px}
+.tag{display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);vertical-align:middle}
+.x{background:none;border:0;color:var(--muted);font-size:22px;width:40px;height:40px;cursor:pointer;flex:none}
+.item{padding:14px 0;border-top:1px solid var(--line)}
+.item:first-child{border-top:0;padding-top:0}
+.item .top{display:flex;gap:8px;margin-bottom:10px}
+.item .top input.n{flex:1}
+.item .top input.p{width:96px;text-align:right}
+.item.unassigned .top input.n{border-color:#E6B85C}
+.seg{display:flex;background:var(--bg);border-radius:12px;padding:4px;gap:4px}
+.seg button{flex:1;border:0;background:transparent;font:inherit;font-weight:600;font-size:15px;
+  min-height:40px;border-radius:9px;color:var(--muted);cursor:pointer}
+.seg button.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
+.line{display:flex;justify-content:space-between;padding:6px 0}
+.line.big{font-weight:800;font-size:18px;border-top:1px solid var(--line);margin-top:6px;padding-top:12px}
+.res{display:flex;gap:12px;align-items:center;padding:14px 0;border-top:1px solid var(--line)}
+.res:first-child{border-top:0;padding-top:0}
+.amt{font-size:24px;font-weight:800;color:var(--accent);letter-spacing:-.5px}
+.paidchip{margin-top:6px;min-height:34px;font-size:13px;padding:0 10px}
+.paidchip.on{background:var(--accent)}
+.res.isPaid .amt{color:var(--muted);text-decoration:line-through}
+.bar{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));
+  background:linear-gradient(transparent,var(--bg) 30%)}
+.bar .wrap{padding:0;display:flex;gap:10px}
+.bar .btn.sec{width:auto;padding:0 20px}
+.warn{background:#FFF3D6;color:#7A5300;border-radius:12px;padding:10px 12px;font-size:14px;margin-bottom:12px}
+@media (prefers-color-scheme: dark){.warn{background:#3B3020;color:#F1CF85}}
+.ok{background:var(--accent-soft);color:var(--accent);border-radius:12px;padding:10px 12px;font-size:14px;font-weight:600;margin:10px 0 0}
+.progress{height:8px;background:var(--line);border-radius:8px;overflow:hidden;margin:14px 0 6px}
+.progress div{height:100%;width:0;background:var(--accent);transition:width .2s}
+.thumb{width:100%;max-height:240px;object-fit:cover;border-radius:14px;margin-bottom:12px}
+.hidden{display:none!important}
+.toast{position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom));transform:translateX(-50%);
+  background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-weight:600;font-size:15px;
+  opacity:0;transition:opacity .2s;pointer-events:none;z-index:30;max-width:90vw;text-align:center}
+.toast.show{opacity:1}
+.saved{margin-top:10px}
+.bill{display:flex;gap:12px;align-items:center;padding:12px 0;border-top:1px solid var(--line);cursor:pointer}
+.bill:first-child{border-top:0;padding-top:0}
+.sheet{position:fixed;inset:0;background:rgba(20,15,5,.45);z-index:20;display:flex;align-items:flex-end;justify-content:center}
+.sheet > div{background:var(--card);width:100%;max-width:560px;border-radius:24px 24px 0 0;padding:22px 16px calc(22px + env(safe-area-inset-bottom))}
+.gbtn{background:#fff;color:#1f1f1f;border:1.5px solid #dadce0}
+.abtn{background:#000;color:#fff}
+@media (prefers-color-scheme: dark){.abtn{background:#fff;color:#000}}
+.big-owe{font-size:46px;font-weight:800;letter-spacing:-1.5px;color:var(--accent);margin:4px 0}
+.mine{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line);cursor:pointer;width:100%;background:none;border-left:0;border-right:0;border-bottom:0;font:inherit;color:inherit;text-align:left}
+.mine:first-child{border-top:0}
+.box{flex:none;width:28px;height:28px;border-radius:8px;border:2px solid var(--line);display:grid;place-items:center;color:#fff;font-weight:800}
+.mine.on .box{background:var(--accent);border-color:var(--accent)}
+.mine:disabled{cursor:default;opacity:.7}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand" id="brand">Split<span>It</span></div>
+    <button class="ghost hidden" id="restart">Start over</button>
+    <button class="ghost hidden" id="signInBtn">Sign in</button>
+    <button class="avatar hidden" id="avatarBtn" aria-label="Account"></button>
+  </header>
+  <div class="steps" id="steps"><i></i><i></i><i></i><i></i></div>
+
+  <!-- 0: Welcome -->
+  <section data-screen="0">
+    <h1>Split the bill in a minute.</h1>
+    <p class="sub">Works right on your phone. Your receipt photo never leaves it.</p>
+    <div class="how">
+      <div><b>📸</b><span><strong>Snap</strong> the receipt</span></div>
+      <div><b>👆</b><span><strong>Tap</strong> who had what</span></div>
+      <div><b>💸</b><span><strong>Request</strong> on Venmo</span></div>
+    </div>
+    <div class="hero">
+      <label class="btn" for="cam">📷 Scan receipt</label>
+      <input id="cam" type="file" accept="image/*" class="hidden">
+      <button class="btn sec" id="manual">Type items in instead</button>
+    </div>
+    <div class="card hidden" id="scanCard" style="margin-top:18px">
+      <img class="thumb" id="thumb" alt="">
+      <div class="muted" id="scanMsg">Reading receipt…</div>
+      <div class="progress"><div id="prog"></div></div>
+      <div class="muted" style="font-size:13px">The first scan downloads the reader (about 10 MB). After that it works offline.</div>
+    </div>
+    <div id="billsWrap" class="hidden" style="margin-top:22px">
+      <h2>Your bills</h2>
+      <div class="card" id="billsList"></div>
+    </div>
+  </section>
+
+  <!-- 1: People -->
+  <section data-screen="1" class="hidden">
+    <h1>Who's at the table?</h1>
+    <p class="sub">Add a Venmo username to get a one-tap request.</p>
+    <div class="card hidden" id="inviteCard">
+      <h2>Invite with a link</h2>
+      <p class="muted" style="margin:0 0 12px">Friends sign in, tap what they had, and see only what <em>they</em> owe.</p>
+      <button class="btn small" id="inviteBtn" style="width:100%">🔗 Share invite link</button>
+    </div>
+    <div class="card">
+      <div class="row">
+        <input id="pName" placeholder="Name" autocomplete="off">
+        <input id="pVenmo" placeholder="@venmo (optional)" autocomplete="off" autocapitalize="off">
+      </div>
+      <button class="btn small" id="addPerson" style="margin-top:10px;width:100%">Add person</button>
+      <div class="saved hidden" id="savedWrap">
+        <div class="muted" style="margin:14px 0 8px">Recent</div>
+        <div class="chips" id="savedChips"></div>
+      </div>
+    </div>
+    <div class="card" id="peopleCard"><div id="peopleList"></div></div>
+  </section>
+
+  <!-- 2: Items -->
+  <section data-screen="2" class="hidden">
+    <h1>Who had what?</h1>
+    <p class="sub">Tap names under each item. Tap more than one to share it.</p>
+    <div class="warn hidden" id="scanWarn"></div>
+    <div class="card" id="itemsCard"><div id="itemList"></div>
+      <button class="btn sec small" id="addItem" style="width:100%;margin-top:12px">+ Add item</button>
+    </div>
+    <div class="card">
+      <h2>Tax &amp; tip</h2>
+      <div class="row" style="margin-bottom:12px">
+        <span class="grow">Tax</span>
+        <input id="tax" inputmode="decimal" style="width:110px;text-align:right" placeholder="0.00">
+      </div>
+      <div class="seg" id="tipSeg" style="margin-bottom:10px">
+        <button data-tip="0">0%</button><button data-tip="15">15%</button><button data-tip="18">18%</button>
+        <button data-tip="20">20%</button><button data-tip="22">22%</button>
+      </div>
+      <div class="row">
+        <span class="grow">Tip ($)</span>
+        <input id="tip" inputmode="decimal" style="width:110px;text-align:right" placeholder="0.00">
+      </div>
+      <div class="muted" style="margin:14px 0 8px">Split tax &amp; tip</div>
+      <div class="seg" id="modeSeg">
+        <button data-mode="prop" class="on">By what they ordered</button>
+        <button data-mode="even">Evenly</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="line"><span>Items</span><span id="sumItems">$0.00</span></div>
+      <div class="line"><span>Tax</span><span id="sumTax">$0.00</span></div>
+      <div class="line"><span>Tip</span><span id="sumTip">$0.00</span></div>
+      <div class="line big"><span>Total</span><span id="sumTotal">$0.00</span></div>
+      <div class="muted hidden" id="receiptTotal" style="margin-top:6px"></div>
+    </div>
+  </section>
+
+  <!-- 3: Results -->
+  <section data-screen="3" class="hidden">
+    <h1>Here's who owes what.</h1>
+    <p class="sub" id="resSub"></p>
+    <div class="card"><div class="row" style="margin-bottom:0">
+      <span class="grow">Bill name</span>
+      <input id="note" style="width:60%" placeholder="Dinner 🍽️">
+    </div></div>
+    <div class="card hidden" id="sendCard">
+      <h2>Send each friend their amount</h2>
+      <p class="muted" style="margin:0 0 12px" id="sendMsg"></p>
+      <button class="btn small" id="sendBtn" style="width:100%">Send amounts</button>
+    </div>
+    <div class="card" id="resList"></div>
+    <div class="card">
+      <h2>Text the group</h2>
+      <div class="seg hidden" id="msgSeg" style="margin-bottom:10px">
+        <button data-m="link">Link only (private)</button>
+        <button data-m="amounts">Everyone's amounts</button>
+      </div>
+      <p class="muted" style="margin:0 0 10px" id="msgHint">Edit it if you like, then send it to the group chat.</p>
+      <textarea id="groupMsg" rows="8"></textarea>
+      <div class="row" style="margin-top:10px">
+        <a class="btn" id="smsBtn">💬 Text it</a>
+        <button class="btn sec" id="copyMsg">Copy</button>
+      </div>
+      <button class="btn sec" id="shareMsg" style="margin-top:10px">Share to another app…</button>
+    </div>
+  </section>
+
+  <!-- 4: Friend's view of a shared bill -->
+  <section data-screen="4" class="hidden"><div id="joinBody"></div></section>
+</div>
+
+<div class="bar"><div class="wrap">
+  <button class="btn sec hidden" id="back">Back</button>
+  <button class="btn hidden" id="next">Next</button>
+</div></div>
+<div class="toast" id="toast"></div>
+<div class="sheet hidden" id="sheet"><div id="sheetBody"></div></div>
+
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js" defer></script>
+<script>
+const $ = s => document.querySelector(s);
+const COLORS = ['#E2683C','#2F7DD1','#8E5BD6','#D1447A','#C99417','#16958F','#5A6B7D','#B5582D'];
+const LS_KEY = 'splitit.people';
+const S = { screen:0, people:[], items:[], tax:0, tip:0, tipPct:null, mode:'prop', receiptTotal:null,
+            note:'', billId:null, shared:false, members:[], sentSig:null, msgMode:null, msgEdited:false };
+const id = () => Math.random().toString(36).slice(2, 10);
+const money = c => (c<0?'-':'') + '$' + (Math.abs(c)/100).toFixed(2);
+const toCents = v => { const n = parseFloat(String(v).replace(/[^0-9.\-]/g,'')); return isNaN(n) ? 0 : Math.round(n*100); };
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const initial = n => esc((String(n||'?').trim()[0] || '?').toUpperCase());
+const cloud = () => window.Cloud && window.Cloud.user ? window.Cloud : null;
+function toast(m){ const t=$('#toast'); t.textContent=m; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),2000); }
+function changed(){ cloud() && cloud().queueSave(); }
+
+function loadSaved(){ try { return JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch(e){ return []; } }
+function storeSaved(list){ try { localStorage.setItem(LS_KEY, JSON.stringify(list.slice(0,30))); } catch(e){} }
+function savePerson(p){
+  const list = loadSaved().filter(x => x.name.toLowerCase() !== p.name.toLowerCase());
+  list.unshift({name:p.name, venmo:p.venmo||''});
+  storeSaved(list);
+  cloud() && cloud().syncSaved();
+}
+
+/* ---------- People model (local people + friends who joined by link) ---------- */
+function allPeople(){
+  const local = S.people.map((p,i) => ({...p, color: COLORS[i % COLORS.length]}));
+  const mem = S.members.map((m,k) => ({ id:'m_'+m.uid, uid:m.uid, member:true, name:m.name||'Friend', venmo:m.venmo||'',
+    paid:!!m.paid, iPaid:!!m.iPaid, color: COLORS[(local.length + k) % COLORS.length] }));
+  return [...local, ...mem];
+}
+function whoOf(it){
+  return [...it.who, ...S.members.filter(m => (m.claims||[]).includes(it.id)).map(m => 'm_'+m.uid)];
+}
+
+/* ---------- Navigation ---------- */
+function go(n){
+  S.screen = n;
+  document.querySelectorAll('section').forEach(s => s.classList.toggle('hidden', +s.dataset.screen !== n));
+  document.querySelectorAll('#steps i').forEach((b,i) => b.classList.toggle('on', i <= n));
+  $('#steps').classList.toggle('hidden', n === 4);
+  $('#back').classList.toggle('hidden', n === 0 || n === 4);
+  $('#next').classList.toggle('hidden', n === 0 || n === 4);
+  $('#restart').classList.toggle('hidden', n === 0 || n === 4);
+  $('#next').textContent = n === 1 ? 'Next: assign items' : n === 2 ? 'Calculate' : 'Done';
+  if (n === 0) { if (location.hash) history.replaceState(null, '', location.pathname); cloud() && cloud().renderBills(); }
+  if (n === 1) { ensureMe(); renderPeople(); }
+  if (n === 2) renderItems();
+  if (n === 3) renderResults();
+  window.scrollTo({top:0});
+  updateNext();
+}
+function updateNext(){
+  const b = $('#next');
+  if (S.screen === 1) b.disabled = allPeople().length < 1;
+  else if (S.screen === 2) b.disabled = !S.items.some(i => i.price);
+  else b.disabled = false;
+}
+$('#back').onclick = () => go(Math.max(0, S.screen - 1));
+$('#brand').onclick = () => { if (S.screen === 0) return; if (S.screen === 4 || confirm('Go home? Your bill is kept' + (cloud() ? ' in Your bills.' : ' until you start over.'))) { if (cloud()) reset(); else go(0); } };
+$('#next').onclick = () => {
+  if (S.screen === 2) {
+    const un = S.items.filter(i => i.price && !whoOf(i).length);
+    if (un.length && !confirm(`${un.length} item${un.length>1?'s are':' is'} not assigned to anyone. Split ${un.length>1?'them':'it'} among everyone?`)) return;
+  }
+  if (S.screen === 3) { if (cloud()) { cloud().flush(); reset(); toast('Saved to Your bills'); } else if (confirm('Start a new bill?')) reset(); return; }
+  go(S.screen + 1);
+};
+$('#restart').onclick = () => { if (confirm(cloud() ? 'Start a new bill? This one stays in Your bills.' : 'Start over? This clears the current bill.')) reset(); };
+function reset(){
+  cloud() && cloud().closeBill();
+  Object.assign(S, {people:[], items:[], tax:0, tip:0, tipPct:null, mode:'prop', receiptTotal:null, note:'',
+    billId:null, shared:false, members:[], sentSig:null, msgMode:null, msgEdited:false});
+  $('#tax').value=''; $('#tip').value=''; $('#note').value=''; $('#scanCard').classList.add('hidden'); $('#scanWarn').classList.add('hidden');
+  $('#cam').value=''; setTipSeg(); setModeSeg(); go(0);
+}
+function ensureMe(){
+  const c = cloud(); if (!c || S.people.some(p => p.me)) return;
+  if (S.billId && S.people.length) return;
+  S.people.unshift({id:id(), name: c.firstName(), venmo:'', me:true});
+}
+// Load a saved bill (from the cloud) into the editor
+function loadBill(b){
+  Object.assign(S, { people:b.people||[], items:b.items||[], tax:b.tax||0, tip:b.tip||0, tipPct:b.tipPct ?? null,
+    mode:b.mode||'prop', note:b.note||'', billId:b.id, shared:!!b.shared, sentSig:b.sentSig||null, receiptTotal:null, msgEdited:false, msgMode:null });
+  $('#tax').value = S.tax ? (S.tax/100).toFixed(2) : ''; $('#tip').value = S.tip ? (S.tip/100).toFixed(2) : '';
+  $('#note').value = S.note; setTipSeg(); setModeSeg();
+}
+
+/* ---------- Scan ---------- */
+$('#manual').onclick = () => { if (!S.items.length) S.items.push({id:id(), name:'', price:0, who:[]}); go(1); };
+$('#cam').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  $('#scanCard').classList.remove('hidden');
+  $('#thumb').src = URL.createObjectURL(f);
+  $('#prog').style.width = '3%';
+  $('#scanMsg').textContent = 'Getting the receipt reader ready…';
+  try {
+    if (!window.Tesseract) throw new Error('reader-missing');
+    const img = await prepImage(f);
+    const worker = await Tesseract.createWorker('eng', 1, {
+      logger: m => {
+        if (m.status === 'recognizing text') { $('#scanMsg').textContent = 'Reading receipt…'; $('#prog').style.width = (10 + m.progress*90) + '%'; }
+        else if (m.progress != null) $('#prog').style.width = Math.max(3, m.progress*10) + '%';
+      }
+    });
+    await worker.setParameters({ tessedit_pageseg_mode: '6', preserve_interword_spaces: '1' });
+    const { data } = await worker.recognize(img);
+    await worker.terminate();
+    applyParsed(parseReceipt(data.text));
+  } catch(err) {
+    console.error(err);
+    alert(!navigator.onLine ? "The receipt reader hasn't been downloaded yet, and you're offline. You can type the items in instead."
+                            : "Couldn't read that photo. You can type the items in instead.");
+    S.items = [{id:id(), name:'', price:0, who:[]}];
+    go(1);
+  }
+};
+
+// Downscale + grayscale + contrast stretch to help OCR
+function prepImage(file){
+  return new Promise((res, rej) => {
+    const im = new Image();
+    im.onload = () => {
+      const max = 2000, sc = Math.min(1, max / Math.max(im.width, im.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(im.width*sc); c.height = Math.round(im.height*sc);
+      const g = c.getContext('2d'); g.drawImage(im, 0, 0, c.width, c.height);
+      const d = g.getImageData(0,0,c.width,c.height), p = d.data;
+      const gray = new Uint8ClampedArray(p.length/4);
+      for (let i=0,j=0;i<p.length;i+=4,j++) gray[j] = .299*p[i]+.587*p[i+1]+.114*p[i+2];
+      const hist = new Array(256).fill(0); gray.forEach(v=>hist[v|0]++);
+      let lo=0, hi=255, acc=0, n=gray.length;
+      for (let v=0; v<256; v++){ acc+=hist[v]; if (acc>n*.02){ lo=v; break; } }
+      acc=0; for (let v=255; v>=0; v--){ acc+=hist[v]; if (acc>n*.02){ hi=v; break; } }
+      const span = Math.max(1, hi-lo);
+      for (let i=0,j=0;i<p.length;i+=4,j++){ const v = Math.max(0,Math.min(255,(gray[j]-lo)*255/span)); p[i]=p[i+1]=p[i+2]=v; }
+      g.putImageData(d,0,0);
+      res(c);
+    };
+    im.onerror = rej;
+    im.src = URL.createObjectURL(file);
+  });
+}
+
+// Turn OCR text into items / tax / tip / total
+function parseReceipt(text){
+  const out = { items:[], tax:null, tip:null, total:null, subtotal:null };
+  const skip = /(sub\s*-?\s*total|total|balance|amount\s*due|change|cash|visa|master|amex|discover|card|debit|credit|auth|approv|tender|payment|paid|thank|server|table|guest|check\s*#|order\s*#|ticket|date|time|tel|phone|www|\.com|suggested|gratuity\s*guide)/i;
+  const priceRe = /(-?\$?\s?\d{1,4}[.,]\s?\d{2})\s*[A-Z]?\s*$/;
+  for (let raw of text.split('\n')) {
+    const line = raw.replace(/[|•·_~]/g,' ').replace(/\s+/g,' ').trim();
+    if (!line) continue;
+    const m = line.match(priceRe); if (!m) continue;
+    const cents = toCents(m[1].replace(',', '.').replace(/\s/g,''));
+    let name = line.slice(0, m.index).replace(/[\s.$:\-]+$/,'').trim();
+    const low = name.toLowerCase();
+    if (/sub\s*-?\s*total/.test(low)) { out.subtotal = cents; continue; }
+    if (/\btax\b|hst|gst|vat/.test(low)) { out.tax = (out.tax||0) + cents; continue; }
+    if (/\btip\b|gratuity|service charge/.test(low) && !/suggest|guide/.test(low)) { out.tip = cents; continue; }
+    if (/\btotal\b|amount due|balance due/.test(low) && !/sub/.test(low)) { out.total = Math.max(out.total||0, cents); continue; }
+    if (skip.test(low)) continue;
+    if (cents <= 0 || cents > 100000) continue;
+    let qty = 1; const q = name.match(/^(\d{1,2})\s*[xX@]?\s+(.*)$/);
+    if (q && +q[1] > 0 && +q[1] < 20) { qty = +q[1]; name = q[2]; }
+    name = name.replace(/^[^A-Za-z0-9]+/,'').trim();
+    if (name.length < 2 || !/[A-Za-z]{2}/.test(name)) continue;
+    out.items.push({ name: titleCase(name) + (qty > 1 ? ` (x${qty})` : ''), cents });
+  }
+  return out;
+}
+function titleCase(s){ return s.toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase()); }
+
+function applyParsed(r){
+  S.items = r.items.map(i => ({id:id(), name:i.name, price:i.cents, who:[]}));
+  if (!S.items.length) S.items.push({id:id(), name:'', price:0, who:[]});
+  if (r.tax != null) { S.tax = r.tax; $('#tax').value = (r.tax/100).toFixed(2); }
+  if (r.tip != null) { S.tip = r.tip; $('#tip').value = (r.tip/100).toFixed(2); }
+  S.receiptTotal = r.total;
+  const found = r.items.length, w = $('#scanWarn');
+  w.innerHTML = found
+    ? `Found ${found} item${found>1?'s':''}. Double-check names and prices against the receipt, scanning isn't perfect.`
+    : `Couldn't pick out items from that photo. Type them in below, or retake it flat and well lit.`;
+  w.classList.remove('hidden');
+  changed();
+  go(1);
+}
+
+/* ---------- People ---------- */
+function addPerson(name, venmo){
+  name = name.trim(); venmo = (venmo||'').trim().replace(/^@/,'');
+  if (!name) return;
+  if (allPeople().some(p => p.name.toLowerCase() === name.toLowerCase())) { toast(name + ' is already added'); return; }
+  const p = {id:id(), name, venmo};
+  S.people.push(p); savePerson(p); changed(); renderPeople();
+}
+$('#addPerson').onclick = () => { addPerson($('#pName').value, $('#pVenmo').value); $('#pName').value=''; $('#pVenmo').value=''; $('#pName').focus(); };
+$('#pName').onkeydown = $('#pVenmo').onkeydown = e => { if (e.key === 'Enter') $('#addPerson').click(); };
+$('#inviteBtn').onclick = async () => {
+  const link = await cloud().ensureShared();
+  const text = `Join my SplitIt bill and tap what you had: ${link}`;
+  if (navigator.share) navigator.share({ title:'SplitIt', text, url: link }).catch(()=>{});
+  else copy(link, 'Invite link copied');
+};
+function renderPeople(){
+  $('#inviteCard').classList.toggle('hidden', !cloud());
+  const ppl = allPeople();
+  const saved = loadSaved().filter(s => !ppl.some(p => p.name.toLowerCase() === s.name.toLowerCase()));
+  $('#savedWrap').classList.toggle('hidden', !saved.length);
+  $('#savedChips').innerHTML = saved.slice(0,12).map((s,i) => `<button class="chip" data-i="${i}">+ ${esc(s.name)}</button>`).join('');
+  $('#savedChips').querySelectorAll('button').forEach(b => b.onclick = () => { const s = saved[+b.dataset.i]; addPerson(s.name, s.venmo); });
+  $('#peopleCard').classList.toggle('hidden', !ppl.length);
+  $('#peopleList').innerHTML = ppl.map(p => `
+    <div class="person">
+      <div class="badge" style="background:${p.color}">${initial(p.name)}</div>
+      <div class="grow"><div><strong>${esc(p.name)}</strong> ${p.me ? '<span class="tag">you</span>' : p.member ? '<span class="tag">joined</span>' : ''}</div>
+        <div class="muted">${p.me ? 'Your share is counted too' : p.member ? 'Picking their own items' : p.venmo ? '@'+esc(p.venmo) : 'No Venmo'}</div></div>
+      ${p.member ? '' : `<button class="x" data-id="${p.id}" aria-label="Remove ${esc(p.name)}">×</button>`}
+    </div>`).join('');
+  $('#peopleList').querySelectorAll('.x').forEach(b => b.onclick = () => {
+    S.people = S.people.filter(p => p.id !== b.dataset.id);
+    S.items.forEach(i => i.who = i.who.filter(w => w !== b.dataset.id));
+    changed(); renderPeople();
+  });
+  updateNext();
+}
+
+/* ---------- Items ---------- */
+$('#addItem').onclick = () => { S.items.push({id:id(), name:'', price:0, who:[]}); renderItems(); const ins = document.querySelectorAll('#itemList input.n'); ins[ins.length-1].focus(); };
+function renderItems(){
+  const ppl = allPeople();
+  $('#itemList').innerHTML = S.items.map(it => {
+    const who = whoOf(it), all = ppl.length > 1 && ppl.every(p => who.includes(p.id));
+    return `<div class="item ${it.price && !who.length ? 'unassigned':''}" data-id="${it.id}">
+      <div class="top">
+        <input class="n" value="${esc(it.name)}" placeholder="Item name">
+        <input class="p" value="${it.price ? (it.price/100).toFixed(2) : ''}" placeholder="0.00" inputmode="decimal">
+        <button class="x" aria-label="Delete item">×</button>
+      </div>
+      <div class="chips">
+        ${ppl.map(p => { const on = who.includes(p.id);
+          return `<button class="chip ${on?'on':''}" data-p="${p.id}" style="${on?`background:${p.color}`:`border-color:${p.color}55`}">${esc(p.name)}</button>`; }).join('')}
+        ${ppl.length > 1 ? `<button class="chip all ${all?'on':''}" data-all="1" style="${all?'background:var(--accent)':''}">Everyone</button>` : ''}
+      </div></div>`;
+  }).join('');
+  $('#itemList').querySelectorAll('.item').forEach(el => {
+    const it = S.items.find(i => i.id === el.dataset.id);
+    el.querySelector('.n').oninput = e => { it.name = e.target.value; changed(); };
+    el.querySelector('.p').oninput = e => { it.price = toCents(e.target.value); el.classList.toggle('unassigned', !!it.price && !whoOf(it).length); recalc(); updateNext(); changed(); };
+    el.querySelector('.x').onclick = () => { S.items = S.items.filter(i => i !== it); changed(); renderItems(); };
+    el.querySelectorAll('.chip').forEach(c => c.onclick = () => {
+      if (c.dataset.all) { const on = !ppl.every(p => whoOf(it).includes(p.id)); ppl.forEach(p => setWho(it, p, on)); }
+      else { const p = ppl.find(x => x.id === c.dataset.p); setWho(it, p, !whoOf(it).includes(p.id)); }
+      changed(); renderItems();
+    });
+  });
+  recalc(); updateNext();
+}
+function setWho(it, p, on){
+  if (p.member) { cloud() && cloud().setMemberClaim(p.uid, it.id, on); const m = S.members.find(m => m.uid === p.uid);
+    m.claims = on ? [...new Set([...(m.claims||[]), it.id])] : (m.claims||[]).filter(x => x !== it.id); return; }
+  it.who = on ? [...new Set([...it.who, p.id])] : it.who.filter(w => w !== p.id);
+}
+const subtotal = () => S.items.reduce((a,i) => a + (i.price||0), 0);
+$('#tax').oninput = e => { S.tax = toCents(e.target.value); recalc(); changed(); };
+$('#tip').oninput = e => { S.tip = toCents(e.target.value); S.tipPct = null; setTipSeg(); recalc(); changed(); };
+function setTipSeg(){ $('#tipSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', S.tipPct != null && +b.dataset.tip === S.tipPct)); }
+$('#tipSeg').querySelectorAll('button').forEach(b => b.onclick = () => { S.tipPct = +b.dataset.tip; setTipSeg(); recalc(); changed(); });
+function setModeSeg(){ $('#modeSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.mode === S.mode)); }
+$('#modeSeg').querySelectorAll('button').forEach(b => b.onclick = () => { S.mode = b.dataset.mode; setModeSeg(); changed(); });
+function recalc(){
+  if (S.tipPct != null) { S.tip = Math.round(subtotal() * S.tipPct / 100); $('#tip').value = (S.tip/100).toFixed(2); }
+  const sub = subtotal();
+  $('#sumItems').textContent = money(sub); $('#sumTax').textContent = money(S.tax);
+  $('#sumTip').textContent = money(S.tip); $('#sumTotal').textContent = money(sub + S.tax + S.tip);
+  const rt = $('#receiptTotal');
+  if (S.receiptTotal) {
+    const diff = S.receiptTotal - (sub + S.tax);
+    rt.textContent = `Receipt total (before tip) was ${money(S.receiptTotal)}` + (Math.abs(diff) > 1 ? ` · off by ${money(diff)}, check items` : ' ✓');
+    rt.classList.remove('hidden');
+  } else rt.classList.add('hidden');
+}
+
+/* ---------- Math ---------- */
+// Split `total` cents by weights so the parts add up exactly (largest remainder).
+function allocate(total, weights){
+  const W = weights.reduce((a,b) => a+b, 0);
+  if (!W) return weights.map(() => 0);
+  const raw = weights.map(w => total * w / W), base = raw.map(Math.floor);
+  let left = total - base.reduce((a,b) => a+b, 0);
+  raw.map((r,i) => [r - base[i], i]).sort((a,b) => b[0]-a[0]).forEach(([,i]) => { if (left > 0) { base[i]++; left--; } });
+  return base;
+}
+function compute(){
+  if (S.tipPct != null) S.tip = Math.round(subtotal() * S.tipPct / 100);
+  const ppl = allPeople(), ids = ppl.map(p => p.id), food = Object.fromEntries(ids.map(i => [i, 0]));
+  for (const it of S.items) {
+    if (!it.price) continue;
+    const w = whoOf(it).filter(x => ids.includes(x)), who = w.length ? w : ids;
+    allocate(it.price, who.map(() => 1)).forEach((c,k) => food[who[k]] += c);
+  }
+  const wt = S.mode === 'even' ? ids.map(() => 1) : ids.map(i => food[i]);
+  const tax = allocate(S.tax, wt), tip = allocate(S.tip, wt);
+  return ppl.map((p,k) => ({ ...p, food: food[p.id], tax: tax[k], tip: tip[k], total: food[p.id] + tax[k] + tip[k] }));
+}
+
+/* ---------- Results ---------- */
+$('#note').oninput = () => { S.note = $('#note').value; S.msgEdited = false; changed(); renderResults(); };
+function renderResults(){
+  const rows = compute(), grand = rows.reduce((a,r) => a + r.total, 0);
+  const note = S.note || 'Dinner';
+  $('#resSub').textContent = `${money(grand)} total · tax & tip split ${S.mode === 'even' ? 'evenly' : 'by what each person ordered'}`;
+  const others = rows.filter(r => !r.me), paidN = others.filter(r => r.paid).length;
+  $('#resList').innerHTML = rows.map((r,k) => {
+    const url = r.venmo && !r.me ? `https://venmo.com/?txn=charge&audience=private&recipients=${encodeURIComponent(r.venmo)}&amount=${(r.total/100).toFixed(2)}&note=${encodeURIComponent(note)}` : '';
+    const action = r.me ? '' : url ? `<a class="btn small" style="margin-top:6px" href="${url}">Request</a>`
+                          : `<button class="btn sec small" data-copy="${k}" style="margin-top:6px">Copy</button>`;
+    const paidBtn = r.me ? '' : `<button class="chip paidchip ${r.paid?'on':''}" data-paid="${k}">${r.paid ? '✓ Paid' : r.iPaid ? 'Says paid · confirm' : 'Mark paid'}</button>`;
+    return `<div class="res ${r.paid?'isPaid':''}">
+      <div class="badge" style="background:${r.color}">${initial(r.name)}</div>
+      <div class="grow"><strong>${esc(r.name)}</strong> ${r.me ? '<span class="tag">you</span>' : ''}
+        <div class="muted">${money(r.food)} + ${money(r.tax)} tax + ${money(r.tip)} tip</div>
+        ${paidBtn}</div>
+      <div style="text-align:right">
+        <div class="amt">${money(r.total)}</div>${r.paid ? '' : action}
+      </div></div>`;
+  }).join('') + (others.length ? `<div class="muted" style="margin-top:12px;text-align:center">${paidN} of ${others.length} paid</div>` : '');
+  $('#resList').querySelectorAll('[data-copy]').forEach(b => b.onclick = () => copy((rows[+b.dataset.copy].total/100).toFixed(2), 'Amount copied'));
+  $('#resList').querySelectorAll('[data-paid]').forEach(b => b.onclick = () => {
+    const r = rows[+b.dataset.paid], on = !r.paid;
+    if (r.member) { cloud() && cloud().setMemberPaid(r.uid, on); S.members.find(m => m.uid === r.uid).paid = on; }
+    else S.people.find(p => p.id === r.id).paid = on;
+    changed(); renderResults();
+  });
+
+  // Sending amounts to friends who joined by link
+  const mem = rows.filter(r => r.member), sig = JSON.stringify(mem.map(r => [r.uid, r.total]));
+  $('#sendCard').classList.toggle('hidden', !mem.length);
+  if (mem.length) {
+    const sent = S.sentSig === sig;
+    $('#sendMsg').textContent = sent ? `Sent. ${mem.length === 1 ? 'Your friend sees' : `Each of the ${mem.length} friends sees`} only their own amount.`
+      : S.sentSig ? 'Amounts changed since you sent them.' : `${mem.map(r => r.name).join(', ')} will see only their own amount.`;
+    $('#sendBtn').textContent = sent ? '✓ Sent' : S.sentSig ? 'Send updated amounts' : 'Send amounts';
+    $('#sendBtn').disabled = sent;
+    $('#sendBtn').onclick = async () => { await cloud().sendAmounts(mem); S.sentSig = sig; changed(); renderResults(); toast('Amounts sent'); };
+  }
+
+  // Group text
+  const c = cloud();
+  $('#msgSeg').classList.toggle('hidden', !c);
+  if (!S.msgMode) S.msgMode = c ? 'link' : 'amounts';
+  if (!c) S.msgMode = 'amounts';
+  $('#msgSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.m === S.msgMode));
+  $('#msgHint').textContent = S.msgMode === 'link'
+    ? 'Each person opens the link and sees only what they owe.'
+    : 'Lists everyone\'s amount in the chat. Edit it if you like.';
+  if (!S.msgEdited) {
+    if (S.msgMode === 'link') {
+      $('#groupMsg').value = 'Getting the link ready…';
+      c.ensureShared().then(link => { if (!S.msgEdited && S.msgMode === 'link') { $('#groupMsg').value = linkText(link, mem.length && S.sentSig === sig); updateSms(); } });
+    } else $('#groupMsg').value = groupText(rows, grand, note);
+  }
+  updateSms();
+}
+$('#msgSeg').querySelectorAll('button').forEach(b => b.onclick = () => { S.msgMode = b.dataset.m; S.msgEdited = false; renderResults(); });
+function linkText(link, sent){
+  const note = S.note || 'Dinner';
+  return `${note} split 🧾\n\nTap the link and sign in. ` +
+    (sent ? `Your total is waiting for you, and only you can see it.` : `Check off what you had and you'll see exactly what you owe. Nobody else sees your amount.`) +
+    `\n${link}`;
+}
+function groupText(rows, grand, note){
+  const anyVenmo = rows.some(r => r.venmo && !r.me);
+  const lines = rows.map(r => {
+    const mine = S.items.filter(i => i.price && (whoOf(i).includes(r.id) || !whoOf(i).length)).map(i => i.name || 'item');
+    const what = mine.length ? ` (${mine.slice(0,3).join(', ')}${mine.length > 3 ? ` +${mine.length-3} more` : ''})` : '';
+    return `• ${r.name}: ${money(r.total)}${what}`;
+  });
+  return `${note} split 🧾\n\n${lines.join('\n')}\n\nTotal ${money(grand)}, tax & tip included (split ${S.mode === 'even' ? 'evenly' : 'by what you ordered'}).\n` +
+    (anyVenmo ? `Sending Venmo requests now 🙏` : `Venmo me when you get a chance 🙏`);
+}
+function updateSms(){ $('#smsBtn').href = 'sms:?&body=' + encodeURIComponent($('#groupMsg').value); }
+$('#groupMsg').oninput = () => { S.msgEdited = true; updateSms(); };
+$('#copyMsg').onclick = () => copy($('#groupMsg').value, 'Message copied');
+$('#shareMsg').onclick = () => { const t = $('#groupMsg').value; if (navigator.share) navigator.share({ text: t }).catch(()=>{}); else copy(t, 'Message copied'); };
+function copy(t, msg){ (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => toast(msg), () => prompt('Copy this:', t)); }
+
+/* ---------- Sheets (sign in / account) ---------- */
+function openSheet(html){ $('#sheetBody').innerHTML = html; $('#sheet').classList.remove('hidden'); }
+function closeSheet(){ $('#sheet').classList.add('hidden'); }
+$('#sheet').onclick = e => { if (e.target.id === 'sheet') closeSheet(); };
+function signInButtons(){
+  const apple = window.SPLITIT_CONFIG && window.SPLITIT_CONFIG.apple;
+  return `<div class="hero">
+    <button class="btn gbtn" data-signin="google"><svg width="20" height="20" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg> Continue with Google</button>
+    ${apple ? `<button class="btn abtn" data-signin="apple"> Continue with Apple</button>` : ''}
+  </div>`;
+}
+function wireSignIn(root){ root.querySelectorAll('[data-signin]').forEach(b => b.onclick = () => window.Cloud.signIn(b.dataset.signin)); }
+$('#signInBtn').onclick = () => {
+  openSheet(`<h2>Sign in to SplitIt</h2>
+    <p class="muted" style="margin:0 0 16px">Save your bills, keep your friends list on every device, track who's paid, and invite friends with a link.</p>
+    ${signInButtons()}`);
+  wireSignIn($('#sheetBody'));
+};
+$('#avatarBtn').onclick = () => {
+  const c = cloud(); if (!c) return;
+  openSheet(`<h2>${esc(c.user.displayName || 'Your account')}</h2>
+    <p class="muted" style="margin:0 0 14px">${esc(c.user.email || '')}</p>
+    <div class="muted" style="margin-bottom:6px">Your Venmo username (so friends can pay you in one tap)</div>
+    <input id="myVenmo" placeholder="@yourname" autocapitalize="off" value="${esc(c.profile.venmo ? '@'+c.profile.venmo : '')}">
+    <button class="btn" id="saveAcct" style="margin-top:12px">Save</button>
+    <button class="btn sec" id="signOut" style="margin-top:10px">Sign out</button>`);
+  $('#saveAcct').onclick = () => { c.setVenmo($('#myVenmo').value.trim().replace(/^@/,'')); closeSheet(); toast('Saved'); };
+  $('#signOut').onclick = () => { closeSheet(); c.signOut(); };
+};
+// Called by cloud.js whenever sign-in state changes
+function renderAccount(){
+  const enabled = !!(window.Cloud && window.Cloud.enabled), c = cloud();
+  $('#signInBtn').classList.toggle('hidden', !enabled || !!c);
+  $('#avatarBtn').classList.toggle('hidden', !c);
+  if (c) $('#avatarBtn').textContent = initial(c.user.displayName || c.user.email);
+  if (S.screen === 0) { $('#billsWrap').classList.toggle('hidden', !c); c && c.renderBills(); }
+  else if (S.screen === 1) renderPeople();
+  else if (S.screen === 3) renderResults();
+}
+// Called by cloud.js when friends join / change their picks
+function membersChanged(){
+  if (S.screen === 1) renderPeople(); else if (S.screen === 2) renderItems(); else if (S.screen === 3) renderResults();
+}
+
+/* ---------- Routing (#join/<billId> = a friend opening a shared bill) ---------- */
+function route(){
+  const m = location.hash.match(/^#join\/([\w-]+)/);
+  if (m) { go(4); if (window.Cloud && window.Cloud.enabled) window.Cloud.openJoin(m[1], $('#joinBody'));
+           else $('#joinBody').innerHTML = '<h1>Loading…</h1>'; }
+  else if (S.screen === 4) go(0);
+}
+window.addEventListener('hashchange', route);
+
+/* ---------- Offline ---------- */
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(()=>{});
+window.addEventListener('load', () => setTimeout(async () => {
+  try { if (!window.Tesseract || !navigator.onLine || localStorage.getItem('splitit.warm')) return;
+    const w = await Tesseract.createWorker('eng'); await w.terminate(); localStorage.setItem('splitit.warm','1');
+  } catch(e){}
+}, 2500));
+
+if (/^#join\//.test(location.hash)) route(); else go(0);
+</script>
+<script type="module" src="cloud.js"></script>
+</body>
+</html>
