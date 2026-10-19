@@ -236,13 +236,8 @@ textarea:focus,input:focus{border-color:var(--accent)}
       <input id="payId" autocomplete="off" autocapitalize="off">
     </div>
     <div class="card" id="resList"></div>
-    <button class="btn sec" id="mathBtn" style="margin-bottom:14px">🧮 See the math</button>
     <label class="btn sec hidden" id="addPhoto" for="addPhotoIn" style="margin-bottom:14px">📷 Add receipt photo</label>
     <input id="addPhotoIn" type="file" accept="image/*" class="hidden">
-    <div class="card hidden" id="resReceipt">
-      <button class="ghost" id="resReceiptBtn" style="padding:0">🧾 View receipt</button>
-      <img class="thumb hidden" id="resThumb" alt="Your receipt" style="max-height:none;object-fit:contain;margin:10px 0 0">
-    </div>
     <div class="card">
       <h2>Text the group</h2>
       <div class="seg hidden" id="msgSeg" style="margin-bottom:10px">
@@ -456,7 +451,7 @@ function reset(){
   Object.assign(S, {people:[], items:[], tax:0, tip:0, tipPct:null, mode:'prop', receiptTotal:null, note:'',
     billId:null, shared:false, members:[], sentSig:null, msgMode:null, msgEdited:false, counted:[], adj:{}, photo:null, public:false});
   $('#tax').value=''; $('#tip').value=''; $('#note').value=''; $('#scanCard').classList.add('hidden'); $('#scanWarn').classList.add('hidden'); $('#itemsThumb').classList.add('hidden'); $('#viewReceipt').classList.add('hidden');
-  $('#thumb').removeAttribute('src'); $('#resThumb').classList.add('hidden'); $('#resReceipt').classList.add('hidden');
+  $('#thumb').removeAttribute('src');
   $('#cam').value=''; setTipSeg(); setModeSeg(); go(0);
 }
 function ensureMe(){
@@ -522,10 +517,9 @@ function smallPhoto(file){
 }
 function showReceipt(){
   const src = S.photo || $('#thumb').src;
-  $('#resReceipt').classList.toggle('hidden', !src);
   $('#addPhoto').classList.toggle('hidden', !!src);   // older bills: attach a photo after the fact
   if (!src) return;
-  $('#itemsThumb').src = $('#resThumb').src = src; $('#viewReceipt').classList.remove('hidden');
+  $('#itemsThumb').src = src; $('#viewReceipt').classList.remove('hidden');
 }
 $('#addPhotoIn').onchange = e => {
   const f = e.target.files[0]; if (!f) return;
@@ -533,7 +527,6 @@ $('#addPhotoIn').onchange = e => {
     .catch(() => toast("Couldn't use that photo"));
   e.target.value = '';
 };
-$('#resReceiptBtn').onclick = () => { const t = $('#resThumb'); t.classList.toggle('hidden'); $('#resReceiptBtn').textContent = t.classList.contains('hidden') ? '🧾 View receipt' : 'Hide receipt'; };
 $('#viewReceipt').onclick = () => { const t = $('#itemsThumb'); t.classList.toggle('hidden'); $('#viewReceipt').textContent = t.classList.contains('hidden') ? '🧾 View receipt' : 'Hide receipt'; };
 
 // Resize, straighten, and turn the photo into crisp black-on-white text for OCR
@@ -1021,7 +1014,6 @@ function openMath(m){
   openSheet(`<h2>The math</h2>${mathHtml(m)}<button class="btn" id="mathDone" style="margin-top:16px">Done</button>`);
   $('#mathDone').onclick = closeSheet;
 }
-$('#mathBtn').onclick = () => openMath(mathData(compute()));
 
 /* ---------- The no-sign-in view of a bill (#bill/<id>) ---------- */
 function renderView(el, v, photo){
