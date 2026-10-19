@@ -234,6 +234,7 @@ function init() {
     C.closeBill();
     loadBill({ id, ...snap.data() });
     photoFor = id;   // already saved
+    if (S.public) C.flush();   // refresh the shared link so it picks up anything new (amounts, See the math)
     if (snap.data().hasPhoto) C.loadPhoto(id).then(p => { if (S.billId === id && p) { S.photo = p; showReceipt(); } });
     S.members = [];
     if (S.shared) { sharedFor = id; watchMembers(); }
