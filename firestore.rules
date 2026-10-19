@@ -32,6 +32,12 @@ service cloud.firestore {
         allow write: if isOwner();
       }
 
+      // Shared view: everyone's amounts and the receipt photo. Anyone with the link can read; only the host writes.
+      match /view/{doc} {
+        allow read: if true;
+        allow write: if isOwner();
+      }
+
       // One doc per friend who joined. A friend can read only their own.
       match /members/{uid} {
         allow read: if isOwner() || (signedIn() && request.auth.uid == uid);

@@ -180,6 +180,7 @@ textarea:focus,input:focus{border-color:var(--accent)}
     <h1>Who had what?</h1>
     <p class="sub">Tap names under each item. Tap more than one to share it.</p>
     <div class="warn hidden" id="scanWarn"></div>
+    <button class="ghost hidden" id="viewReceipt" style="padding:0 0 10px">🧾 View receipt</button>
     <img class="thumb hidden" id="itemsThumb" alt="Your receipt" style="max-height:none;object-fit:contain">
     <div class="card" id="itemsCard"><div id="itemList"></div>
       <button class="btn sec small" id="addItem" style="width:100%;margin-top:12px">+ Add item</button>
@@ -235,8 +236,8 @@ textarea:focus,input:focus{border-color:var(--accent)}
     <div class="card">
       <h2>Text the group</h2>
       <div class="seg hidden" id="msgSeg" style="margin-bottom:10px">
-        <button data-m="link">Link only (private)</button>
-        <button data-m="amounts">Everyone's amounts</button>
+        <button data-m="link">Link (no sign-in)</button>
+        <button data-m="amounts">Amounts in the text</button>
       </div>
       <p class="muted" style="margin:0 0 10px" id="msgHint">Edit it if you like, then send it to the group chat.</p>
       <textarea id="groupMsg" rows="8"></textarea>
@@ -266,7 +267,7 @@ const $ = s => document.querySelector(s);
 const COLORS = ['#E2683C','#2F7DD1','#8E5BD6','#D1447A','#C99417','#16958F','#5A6B7D','#B5582D'];
 const LS_KEY = 'splitit.people';
 const S = { screen:0, people:[], items:[], tax:0, tip:0, tipPct:null, mode:'prop', receiptTotal:null,
-            note:'', billId:null, shared:false, members:[], sentSig:null, msgMode:null, msgEdited:false, counted:[], adj:{} };
+            note:'', billId:null, shared:false, members:[], sentSig:null, msgMode:null, msgEdited:false, counted:[], adj:{}, photo:null, public:false };
 const id = () => Math.random().toString(36).slice(2, 10);
 const money = c => (c<0?'-':'') + '$' + (Math.abs(c)/100).toFixed(2);
 const toCents = v => { const n = parseFloat(String(v).replace(/[^0-9.\-]/g,'')); return isNaN(n) ? 0 : Math.round(n*100); };
@@ -423,8 +424,8 @@ $('#restart').onclick = () => { const kept = S.billId || S.items.some(i => i.pri
 function reset(){
   if (cloud()) cloud().closeBill(); else saveLocal();
   Object.assign(S, {people:[], items:[], tax:0, tip:0, tipPct:null, mode:'prop', receiptTotal:null, note:'',
-    billId:null, shared:false, members:[], sentSig:null, msgMode:null, msgEdited:false, counted:[], adj:{}});
-  $('#tax').value=''; $('#tip').value=''; $('#note').value=''; $('#scanCard').classList.add('hidden'); $('#scanWarn').classList.add('hidden'); $('#itemsThumb').classList.add('hidden');
+    billId:null, shared:false, members:[], sentSig:null, msgMode:null, msgEdited:false, counted:[], adj:{}, photo:null, public:false});
+  $('#tax').value=''; $('#tip').value=''; $('#note').value=''; $('#scanCard').classList.add('hidden'); $('#scanWarn').classList.add('hidden'); $('#itemsThumb').classList.add('hidden'); $('#viewReceipt').classList.add('hidden');
   $('#cam').value=''; setTipSeg(); setModeSeg(); go(0);
 }
 function ensureMe(){
@@ -436,7 +437,7 @@ function ensureMe(){
 function loadBill(b){
   Object.assign(S, { people:b.people||[], items:b.items||[], tax:b.tax||0, tip:b.tip||0, tipPct:b.tipPct ?? null,
     mode:b.mode||'prop', note:b.note||'', billId:b.id, shared:!!b.shared, sentSig:b.sentSig||null, receiptTotal:null, msgEdited:false, msgMode:null,
-    counted:(b.people||[]).map(p => lc(p.name)), adj:b.adj || {} });
+    counted:(b.people||[]).map(p => lc(p.name)), adj:b.adj || {}, photo:null, public:!!b.public });
   $('#tax').value = S.tax ? (S.tax/100).toFixed(2) : ''; $('#tip').value = S.tip ? (S.tip/100).toFixed(2) : '';
   $('#note').value = S.note; setTipSeg(); setModeSeg();
 }
@@ -445,6 +446,7 @@ function loadBill(b){
 $('#manual').onclick = () => { if (!S.items.length) S.items.push({id:id(), name:'', price:0, who:[]}); go(1); };
 $('#cam').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
+  smallPhoto(f).then(p => { S.photo = p; showReceipt(); changed(); }).catch(console.warn);
   $('#scanCard').classList.remove('hidden');
   $('#thumb').src = URL.createObjectURL(f);
   $('#prog').style.width = '3%';
@@ -470,6 +472,28 @@ $('#cam').onchange = async e => {
     go(1);
   }
 };
+
+// A small copy of the receipt photo (well under Firestore's 1 MB limit) to keep with the bill and show on the shared link
+function smallPhoto(file){
+  return new Promise((res, rej) => {
+    const im = new Image();
+    im.onload = () => {
+      const sc = Math.min(1, 1400 / Math.max(im.width, im.height)), c = document.createElement('canvas');
+      c.width = Math.round(im.width * sc); c.height = Math.round(im.height * sc);
+      c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+      let q = .7, url = c.toDataURL('image/jpeg', q);
+      while (url.length > 700000 && q > .3) url = c.toDataURL('image/jpeg', q -= .1);
+      res(url);
+    };
+    im.onerror = rej;
+    im.src = URL.createObjectURL(file);
+  });
+}
+function showReceipt(){
+  const src = S.photo || $('#thumb').src; if (!src) return;
+  $('#itemsThumb').src = src; $('#viewReceipt').classList.remove('hidden');
+}
+$('#viewReceipt').onclick = () => { const t = $('#itemsThumb'); t.classList.toggle('hidden'); $('#viewReceipt').textContent = t.classList.contains('hidden') ? '🧾 View receipt' : 'Hide receipt'; };
 
 // Resize, straighten, and turn the photo into crisp black-on-white text for OCR
 function prepImage(file){
@@ -597,10 +621,8 @@ function applyParsed(r){
     ? `Found ${found} item${found>1?'s':''}. Double-check names and prices against the receipt, scanning isn't perfect.` +
       (r.items.some(i => i.guessed) ? ` One price couldn't be read, so <strong>${esc(r.items.find(i => i.guessed).name)}</strong> was filled in from the subtotal.` : '')
     : `Couldn't pick out items from that photo. Type them in below, or retake it flat and well lit.`;
-  w.innerHTML += ` <button class="ghost" id="viewReceipt" style="padding:0">View receipt</button>`;
   w.classList.remove('hidden');
-  $('#itemsThumb').src = $('#thumb').src;
-  $('#viewReceipt').onclick = () => { const t = $('#itemsThumb'); t.classList.toggle('hidden'); $('#viewReceipt').textContent = t.classList.contains('hidden') ? 'View receipt' : 'Hide receipt'; };
+  showReceipt();
   changed();
   go(1);
 }
@@ -905,16 +927,47 @@ function renderResults(){
   if (!c) S.msgMode = 'amounts';
   $('#msgSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.m === S.msgMode));
   $('#msgHint').textContent = S.msgMode === 'link'
-    ? 'Each person opens the link and sees only what they owe.'
+    ? 'One link for everyone. It shows what each person owes and the receipt photo, and updates if you change anything. No sign-in needed.'
     : 'Lists everyone\'s amount in the chat. Edit it if you like.';
   if (!S.msgEdited) {
     if (S.msgMode === 'link') {
       $('#groupMsg').value = 'Getting the link ready…';
-      c.ensureShared().then(link => { if (!S.msgEdited && S.msgMode === 'link') { $('#groupMsg').value = linkText(link, mem.length && S.sentSig === sig); updateSms(); } });
+      c.ensurePublic().then(link => { if (!S.msgEdited && S.msgMode === 'link') { $('#groupMsg').value = viewText(link, rows); updateSms(); } });
     } else $('#groupMsg').value = groupText(rows, grand, note);
   }
   updateSms();
 }
+/* ---------- The no-sign-in view of a bill (#bill/<id>) ---------- */
+function renderView(el, v, photo){
+  const p = v.pay || {}, zelle = p.method === 'zelle' && p.zelle, owner = esc(v.ownerName), first = esc((v.ownerName || 'them').split(' ')[0]);
+  const signedIn = !!(window.Cloud && window.Cloud.user);   // anyone can look; paying asks for sign-in
+  const pay = r => r.me || r.paid || !r.total ? '' : zelle ? ''
+    : !signedIn && p.venmo ? `<button class="btn small" style="margin-top:6px" data-signpay="1">Pay</button>`
+    : p.venmo ? `<a class="btn small" style="margin-top:6px" href="https://venmo.com/?txn=pay&audience=private&recipients=${encodeURIComponent(p.venmo)}&amount=${(r.total/100).toFixed(2)}&note=${encodeURIComponent(v.title)}">Pay</a>` : '';
+  el.innerHTML = `<h1>${owner}'s bill</h1>
+    <p class="sub">${esc(v.title)} · ${money(v.total)} total, tax & tip split ${v.mode === 'even' ? 'evenly' : 'by what each person ordered'}</p>
+    ${zelle ? (signedIn ? `<div class="card"><div class="muted">Pay ${first} with Zelle in your bank app:</div>
+      <div style="font-weight:700;margin:4px 0 10px">${esc(p.zelle)}</div><button class="btn sec small" id="vZelle" style="width:100%">Copy Zelle info</button></div>`
+      : `<div class="card"><div class="muted" style="margin-bottom:10px">${first} gets paid by Zelle.</div><button class="btn small" data-signpay="1" style="width:100%">Sign in to see how to pay</button></div>`) : ''}
+    <div class="card">${(v.people || []).map((r, k) => `
+      <div class="res ${r.paid ? 'isPaid' : ''}">
+        <div class="badge" style="background:${COLORS[k % COLORS.length]}">${initial(r.name)}</div>
+        <div class="grow"><strong>${esc(r.name)}</strong> ${r.me ? '<span class="tag">paid the bill</span>' : r.paid ? '<span class="tag">✓ paid</span>' : ''}
+          <div class="muted">${r.coveredBy ? `🎁 Covered by ${esc(r.coveredBy)}` : esc(r.items.join(', '))}</div></div>
+        <div style="text-align:right"><div class="amt">${money(r.total)}</div>${pay(r)}</div>
+      </div>`).join('')}</div>
+    ${photo ? `<div class="card"><h2>Receipt</h2><img class="thumb" id="vPhoto" src="${photo}" alt="Receipt" style="max-height:320px;cursor:zoom-in">
+      <div class="muted" style="font-size:13px">Tap to zoom</div></div>` : v.hasPhoto ? '<div class="card muted">Loading the receipt photo…</div>' : ''}
+    <a class="btn sec" href="./" style="margin-top:6px">Split your own bill with Triangle Splitter</a>`;
+  const z = el.querySelector('#vZelle'); if (z) z.onclick = () => copy(p.zelle, 'Copied. Paste it into Zelle');
+  el.querySelectorAll('[data-signpay]').forEach(b => b.onclick = () => {
+    openSheet(`<h2>Sign in to pay</h2><p class="muted" style="margin:0 0 16px">Anyone with the link can see the bill. Sign in to pay ${first}.</p>${signInButtons()}`);
+    wireSignIn($('#sheetBody'));
+  });
+  const ph = el.querySelector('#vPhoto');
+  if (ph) ph.onclick = () => { const big = ph.style.maxHeight === 'none'; ph.style.maxHeight = big ? '320px' : 'none'; ph.style.objectFit = big ? 'cover' : 'contain'; };
+}
+
 /* ---------- Edit one person's share ---------- */
 function openEdit(pid){
   const r = compute().find(x => x.id === pid); if (!r) return closeSheet();
@@ -981,6 +1034,10 @@ function wirePay(seg, input, after){
 }
 const drawPay = wirePay($('#paySeg'), $('#payId'), () => { S.msgEdited = false; renderResults(); });
 $('#msgSeg').querySelectorAll('button').forEach(b => b.onclick = () => { S.msgMode = b.dataset.m; S.msgEdited = false; renderResults(); });
+function viewText(link, rows){
+  const ask = groupText(rows, 0, '').split('\n').pop();
+  return `${S.note || 'Dinner'} split 🧾\n\nSee what everyone owes (and the receipt): ${link}\n\n${ask}`;
+}
 function linkText(link, sent){
   const note = S.note || 'Dinner';
   return `${note} split 🧾\n\nTap the link and sign in. ` +
@@ -1053,6 +1110,9 @@ function membersChanged(){
 
 /* ---------- Routing (#join/<billId> = a friend opening a shared bill) ---------- */
 function route(){
+  const v = location.hash.match(/^#bill\/([\w-]+)/);
+  if (v) { go(4); if (window.Cloud && window.Cloud.enabled) window.Cloud.openView(v[1], $('#joinBody'));
+           else $('#joinBody').innerHTML = '<h1>Loading…</h1>'; return; }
   const m = location.hash.match(/^#join\/([\w-]+)/);
   if (m) { go(4); if (window.Cloud && window.Cloud.enabled) window.Cloud.openJoin(m[1], $('#joinBody'));
            else $('#joinBody').innerHTML = '<h1>Loading…</h1>'; }
@@ -1068,7 +1128,7 @@ window.addEventListener('load', () => setTimeout(async () => {
   } catch(e){}
 }, 2500));
 
-if (/^#join\//.test(location.hash)) route(); else go(0);
+if (/^#(join|bill)\//.test(location.hash)) route(); else go(0);
 </script>
 <script type="module" src="cloud.js"></script>
 </body>

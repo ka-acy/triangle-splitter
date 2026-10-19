@@ -14,15 +14,16 @@ function init() {
   if (cfg.emulator) {
     F.connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true });
     F.connectFirestoreEmulator(db, 'localhost', 8080);
-    C._test = { auth, F };
+    C._test = { auth, F, db };
   }
   C.enabled = true;
 
   const billRef = id => F.doc(db, 'bills', id);
   const pubRef = id => F.doc(db, 'bills', id, 'public', 'menu');
   const memRef = (id, uid) => F.doc(db, 'bills', id, 'members', uid);
+  const viewRef = (id, doc) => F.doc(db, 'bills', id, 'view', doc);
   const userRef = uid => F.doc(db, 'users', uid);
-  let unsubMembers = null, unsubJoin = [], saveTimer = null, sharedFor = null;
+  let unsubMembers = null, unsubJoin = [], saveTimer = null, sharedFor = null, photoFor = null;
 
   F.getRedirectResult(auth).catch(e => toast(signInError(e)));
   F.onAuthStateChanged(auth, async u => {
@@ -97,12 +98,38 @@ function init() {
       note: S.note || '', items: S.items.map(i => ({ id: i.id, name: i.name || '', price: i.price || 0, who: i.who || [], shares: i.shares || {} })),
       people: S.people.map(p => ({ id: p.id, name: p.name, venmo: p.venmo || '', me: !!p.me, paid: !!p.paid })),
       adj: S.adj || {}, tax: S.tax || 0, tip: S.tip || 0, tipPct: S.tipPct ?? null, mode: S.mode, shared: !!S.shared, sentSig: S.sentSig || null,
+      public: !!S.public, hasPhoto: !!S.photo,
       total: rows.reduce((a, r) => a + r.total, 0), peopleCount: others.length, paidCount: others.filter(r => r.paid).length,
       updatedAt: F.serverTimestamp(),
     };
     if (isNew) data.createdAt = F.serverTimestamp();
-    F.setDoc(billRef(S.billId), data, { merge: true }).catch(e => { console.warn(e); toast('Couldn\'t save the bill'); });
+    const saved = F.setDoc(billRef(S.billId), data, { merge: true }).catch(e => { console.warn(e); toast('Couldn\'t save the bill'); });
     if (S.shared) writePublic();
+    // the view docs check the bill's owner, so write them after the bill exists
+    const bid = S.billId;
+    if (S.photo && photoFor !== bid) { photoFor = bid; const data = S.photo; saved.then(() => F.setDoc(viewRef(bid, 'photo'), { data })).catch(console.warn); }
+    if (S.public) { const sum = summary(rows); saved.then(() => F.setDoc(viewRef(bid, 'summary'), sum)).catch(console.warn); }
+    return saved;
+  };
+  // What the no-sign-in link shows: everyone's amounts, items, and how to pay the host
+  function summary(rows) {
+    return {
+      title: S.note || 'Dinner', ownerName: C.user.displayName || 'Your friend', hasPhoto: !!S.photo,
+      pay: { method: C.profile.payMethod || 'venmo', venmo: C.profile.venmo || '', zelle: C.profile.zelle || '' },
+      total: rows.reduce((a, r) => a + r.total, 0), tax: S.tax || 0, tip: S.tip || 0, mode: S.mode,
+      people: rows.map(r => ({
+        name: r.name, me: !!r.me, total: r.total, paid: !!r.paid, coveredBy: r.coveredBy || '',
+        items: S.items.filter(i => i.price && (whoOf(i).includes(r.id) || !whoOf(i).length)).map(i => i.name || 'Item'),
+      })),
+      updatedAt: F.serverTimestamp(),
+    };
+  }
+  C.ensurePublic = async () => {
+    S.public = true; await C.flush();
+    return location.origin + location.pathname + '#bill/' + S.billId;
+  };
+  C.loadPhoto = async id => {
+    try { const s = await F.getDoc(viewRef(id, 'photo')); return s.exists() ? s.data().data : null; } catch (e) { return null; }
   };
   function writePublic() {
     return F.setDoc(pubRef(S.billId), {
@@ -155,6 +182,7 @@ function init() {
       const ms = await F.getDocs(F.collection(db, 'bills', id, 'members'));
       await Promise.all(ms.docs.map(d => F.deleteDoc(d.ref)));
       await F.deleteDoc(pubRef(id)).catch(() => {});
+      await Promise.all(['summary', 'photo'].map(d => F.deleteDoc(viewRef(id, d)).catch(() => {})));
       await F.deleteDoc(billRef(id));
     } catch (e) { console.warn(e); toast('Couldn\'t delete the bill'); }
     C.renderBills();
@@ -187,9 +215,24 @@ function init() {
     if (!snap.exists()) return toast('That bill was not found');
     C.closeBill();
     loadBill({ id, ...snap.data() });
+    photoFor = id;   // already saved
+    if (snap.data().hasPhoto) C.loadPhoto(id).then(p => { if (S.billId === id && p) { S.photo = p; showReceipt(); } });
     S.members = [];
     if (S.shared) { sharedFor = id; watchMembers(); }
     go(3);
+  };
+
+  /* ---- anyone: the no-sign-in view of a bill ---- */
+  C.openView = (bid, el) => {
+    unsubJoin.forEach(u => u()); unsubJoin = [];
+    el.innerHTML = '<h1>Loading…</h1>';
+    let photo = null, sum = null;
+    const draw = () => renderView(el, sum, photo);
+    unsubJoin.push(F.onSnapshot(viewRef(bid, 'summary'), s => {
+      if (!s.exists()) { el.innerHTML = `<h1>Bill not found.</h1><p class="sub">The link may be wrong, or the bill was deleted.</p><a class="btn sec" href="./">Go home</a>`; return; }
+      sum = s.data(); draw();
+      if (sum.hasPhoto && !photo) C.loadPhoto(bid).then(p => { photo = p; draw(); });
+    }, e => { console.warn(e); el.innerHTML = '<h1>Couldn\'t load this bill.</h1><p class="sub">Check your connection and try again.</p>'; }));
   };
 
   /* ---- friend: viewing a shared bill ---- */
