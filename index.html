@@ -236,6 +236,9 @@ textarea:focus,input:focus{border-color:var(--accent)}
       <input id="payId" autocomplete="off" autocapitalize="off">
     </div>
     <div class="card" id="resList"></div>
+    <button class="btn sec" id="mathBtn" style="margin-bottom:14px">🧮 See the math</button>
+    <label class="btn sec hidden" id="addPhoto" for="addPhotoIn" style="margin-bottom:14px">📷 Add receipt photo</label>
+    <input id="addPhotoIn" type="file" accept="image/*" class="hidden">
     <div class="card hidden" id="resReceipt">
       <button class="ghost" id="resReceiptBtn" style="padding:0">🧾 View receipt</button>
       <img class="thumb hidden" id="resThumb" alt="Your receipt" style="max-height:none;object-fit:contain;margin:10px 0 0">
@@ -520,9 +523,16 @@ function smallPhoto(file){
 function showReceipt(){
   const src = S.photo || $('#thumb').src;
   $('#resReceipt').classList.toggle('hidden', !src);
+  $('#addPhoto').classList.toggle('hidden', !!src);   // older bills: attach a photo after the fact
   if (!src) return;
   $('#itemsThumb').src = $('#resThumb').src = src; $('#viewReceipt').classList.remove('hidden');
 }
+$('#addPhotoIn').onchange = e => {
+  const f = e.target.files[0]; if (!f) return;
+  smallPhoto(f).then(p => { S.photo = p; cloud() && cloud().photoChanged(); S.msgEdited = false; changed(); renderResults(); toast('Receipt photo added'); })
+    .catch(() => toast("Couldn't use that photo"));
+  e.target.value = '';
+};
 $('#resReceiptBtn').onclick = () => { const t = $('#resThumb'); t.classList.toggle('hidden'); $('#resReceiptBtn').textContent = t.classList.contains('hidden') ? '🧾 View receipt' : 'Hide receipt'; };
 $('#viewReceipt').onclick = () => { const t = $('#itemsThumb'); t.classList.toggle('hidden'); $('#viewReceipt').textContent = t.classList.contains('hidden') ? '🧾 View receipt' : 'Hide receipt'; };
 
@@ -968,6 +978,51 @@ function renderResults(){
   }
   updateSms();
 }
+/* ---------- "See the math": how each item, the tax and the tip were split ---------- */
+function mathData(rows){
+  const ids = rows.map(r => r.id), nameOf = x => (rows.find(r => r.id === x) || {}).name || '?';
+  const items = S.items.filter(i => i.price).map(it => {
+    const w = whoOf(it).filter(x => ids.includes(x)), who = w.length ? w : ids, sh = it.shares || {};
+    const parts = allocate(it.price, who.map(x => sh[x] || 1));
+    return { name: it.name || 'Item', price: it.price, everyone: !w.length,
+      parts: who.map((x, k) => ({ name: nameOf(x), amt: parts[k], n: who.length > 1 ? sh[x] || 1 : 1 })) };
+  });
+  const food = rows.reduce((a, r) => a + r.food, 0);
+  return { items, tax: S.tax || 0, tip: S.tip || 0, tipPct: S.tipPct ?? null, mode: S.mode, total: rows.reduce((a, r) => a + r.total, 0),
+    people: rows.map(r => ({ name: r.name, food: r.food, tax: r.tax, tip: r.tip, base: r.base, total: r.total,
+      pct: S.mode === 'even' ? Math.round(1000 / rows.length) / 10 : food ? Math.round(r.food * 1000 / food) / 10 : 0,
+      fixed: ((S.adj || {})[r.id] || {}).fixed != null, coveredBy: r.coveredBy || '', covering: r.covering || [] })) };
+}
+function mathHtml(m){
+  const line = (a, b) => `<div class="row" style="justify-content:space-between;padding:3px 0"><span class="grow">${a}</span><span>${b}</span></div>`;
+  const small = t => `<div class="muted" style="font-size:13px">${t}</div>`;
+  return `<h3 style="margin:6px 0">1 · Items</h3>` + m.items.map(it => `
+    <div style="padding:8px 0;border-top:1px solid var(--line)">
+      ${line(`<strong>${esc(it.name)}</strong>`, `<strong>${money(it.price)}</strong>`)}
+      ${small(it.parts.length === 1 ? esc(it.parts[0].name)
+        : `Split ${it.parts.some(p => p.n > 1) ? 'by shares' : 'evenly'} between ${it.everyone ? 'everyone' : it.parts.length + ' people'}`)}
+      ${it.parts.length > 1 ? it.parts.map(p => line(`<span class="muted">${esc(p.name)}${p.n > 1 ? ` ×${p.n}` : ''}</span>`, `<span class="muted">${money(p.amt)}</span>`)).join('') : ''}
+    </div>`).join('') +
+    `<h3 style="margin:16px 0 6px">2 · Tax ${money(m.tax)} and tip ${money(m.tip)}${m.tipPct != null ? ` (${m.tipPct}% of the food)` : ''}</h3>
+    ${small(m.mode === 'even' ? 'Split evenly between everyone.' : 'Split by what each person ordered. If your food is 40% of the bill, you pay 40% of the tax and tip.')}
+    ${m.people.map(p => line(`${esc(p.name)} <span class="muted">· ${p.pct}%</span>`, `${money(p.tax)} + ${money(p.tip)}`)).join('')}
+    <h3 style="margin:16px 0 6px">3 · Each person</h3>` +
+    m.people.map(p => `<div style="padding:8px 0;border-top:1px solid var(--line)">
+      ${line(`<strong>${esc(p.name)}</strong>`, `<strong>${money(p.total)}</strong>`)}
+      ${small(`${money(p.food)} food + ${money(p.tax)} tax + ${money(p.tip)} tip = ${money(p.base)}` +
+        (p.fixed ? `<br>Amount set to ${money(p.total)}, and everyone else split the rest`
+          : p.base !== p.total && !p.coveredBy && !p.covering.length ? `<br>Now ${money(p.total)}, because someone's amount was set` : '') +
+        (p.coveredBy ? `<br>🎁 Covered by ${esc(p.coveredBy)}, so they pay nothing` : '') +
+        (p.covering.length ? `<br>Plus covering ${esc(p.covering.join(', '))}, so ${money(p.total)}` : ''))}
+    </div>`).join('') +
+    `<div style="border-top:2px solid var(--line);margin-top:4px;padding-top:6px">${line('<strong>Total</strong>', `<strong>${money(m.total)}</strong>`)}</div>`;
+}
+function openMath(m){
+  openSheet(`<h2>The math</h2>${mathHtml(m)}<button class="btn" id="mathDone" style="margin-top:16px">Done</button>`);
+  $('#mathDone').onclick = closeSheet;
+}
+$('#mathBtn').onclick = () => openMath(mathData(compute()));
+
 /* ---------- The no-sign-in view of a bill (#bill/<id>) ---------- */
 function renderView(el, v, photo){
   const p = v.pay || {}, zelle = p.method === 'zelle' && p.zelle, owner = esc(v.ownerName), first = esc((v.ownerName || 'them').split(' ')[0]);
@@ -989,7 +1044,9 @@ function renderView(el, v, photo){
       </div>`).join('')}</div>
     ${photo ? `<div class="card"><h2>Receipt</h2><img class="thumb" id="vPhoto" src="${photo}" alt="Receipt" style="max-height:320px;cursor:zoom-in">
       <div class="muted" style="font-size:13px">Tap to zoom</div></div>` : v.hasPhoto ? '<div class="card muted">Loading the receipt photo…</div>' : ''}
+    ${v.math ? '<button class="btn sec" id="vMath" style="margin-bottom:14px">🧮 See the math</button>' : ''}
     <a class="btn sec" href="./" style="margin-top:6px">Split your own bill with Triangle Splitter</a>`;
+  const vm = el.querySelector('#vMath'); if (vm) vm.onclick = () => openMath(v.math);
   const z = el.querySelector('#vZelle'); if (z) z.onclick = () => copy(p.zelle, 'Copied. Paste it into Zelle');
   el.querySelectorAll('[data-signpay]').forEach(b => b.onclick = () => {
     openSheet(`<h2>Sign in to pay</h2><p class="muted" style="margin:0 0 16px">Anyone with the link can see the bill. Sign in to pay ${first}.</p>${signInButtons()}`);

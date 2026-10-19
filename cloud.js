@@ -117,7 +117,7 @@ function init() {
     return {
       title: S.note || 'Dinner', ownerName: C.user.displayName || 'Your friend', hasPhoto: !!S.photo,
       pay: { method: C.profile.payMethod || 'venmo', venmo: C.profile.venmo || '', zelle: C.profile.zelle || '' },
-      total: rows.reduce((a, r) => a + r.total, 0), tax: S.tax || 0, tip: S.tip || 0, mode: S.mode,
+      total: rows.reduce((a, r) => a + r.total, 0), tax: S.tax || 0, tip: S.tip || 0, mode: S.mode, math: mathData(rows),
       people: rows.map(r => ({
         name: r.name, me: !!r.me, total: r.total, paid: !!r.paid, coveredBy: r.coveredBy || '',
         items: S.items.filter(i => i.price && (whoOf(i).includes(r.id) || !whoOf(i).length)).map(i => i.name || 'Item'),
@@ -129,6 +129,7 @@ function init() {
     S.public = true; await C.flush();
     return location.origin + location.pathname + '#bill/' + S.billId;
   };
+  C.photoChanged = () => { photoFor = null; };   // upload the new photo on the next save
   C.loadPhoto = async id => {
     try { const s = await F.getDoc(viewRef(id, 'photo')); return s.exists() ? s.data().data : null; } catch (e) { return null; }
   };
