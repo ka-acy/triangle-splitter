@@ -532,25 +532,36 @@ function findSkew(im){
 function parseReceipt(text){
   const out = { items:[], tax:null, tip:null, total:null, subtotal:null };
   const skip = /(sub\s*-?\s*total|total|balance|amount\s*due|change|cash|visa|master|amex|discover|card|debit|credit|auth|approv|tender|payment|paid|thank|server|table|guest|check\s*#|order\s*#|ticket|date|time|tel|phone|www|\.com|suggested|gratuity\s*guide)/i;
-  // a price at the end of a line; allows common misreads (S→5, O→0, l→1, B→8) and a dropped decimal point ("40 22")
-  const priceRe = /(-?\$?\s?[\dSOolIB]{1,4}(?:[.,]\s?|\s)[\dSOolIB]{2})(?:\s+\S{1,2})?\s*$/;   // ignores a stray mark or tax flag after the price
+  // Prices look like 12.34, allowing common misreads (S→5, O→0, l→1, B→8). Take the last one on the line,
+  // since things next to the receipt (a table, a keyboard) can add junk after it.
+  const priceG = /(?:^|[\s$(])(-?\$?\s?[\dSOolIB]{1,4}[.,]\s?[\dSOolIB]{2})(?![\dSOolIB])/g;
+  const tailRe = /(?:^|\s)(\d{1,4}\s\d{2})\s*$/;   // a dropped decimal point ("40 22") only counts at the end
   const fix = t => t.replace(/[Ss]/g,'5').replace(/[Oo]/g,'0').replace(/[lI]/g,'1').replace(/B/g,'8');
-  let pending = '';   // item name whose price landed on the next line
+  const qtyStart = /^\W*\d{1,2}\s+[A-Za-z(]/;
+  let unpriced = '', gapName = '';
+  let pending = '';   // a line with no price: maybe an item name that wraps, or whose price is on the next line
   for (let raw of text.split('\n')) {
     const line = raw.replace(/[|•·_~\\]/g,' ').replace(/\s+/g,' ').trim();
     if (!line) continue;
-    const m = line.match(priceRe);
-    if (!m || !/\d/.test(m[1]) || (/^\S+\s\S{2}$/.test(m[1].trim()) && !/\d\s\d{2}$/.test(m[1]))) {
-      pending = /[A-Za-z]{3}/.test(line) && !/\d/.test(line) ? line : ''; continue;
+    let m = null;
+    for (const x of line.matchAll(priceG)) if ((x[1].match(/\d/g) || []).length >= 2) m = x;
+    if (!m) m = line.match(tailRe);
+    if (!m) {
+      pending = /[A-Za-z]{3}/.test(line) ? line.replace(/(\s+\S{1,2})+\s*$/, '') : '';
+      // remember an item line that never got a price, plus any wrapped words after it
+      unpriced = qtyStart.test(pending) ? pending : unpriced && /^[A-Za-z][A-Za-z ,&'-]*$/.test(pending) ? unpriced + ' ' + pending : unpriced;
+      continue;
     }
     const num = fix(m[1].replace(/\$/g,'').trim()).replace(/(\d)[.,]?\s(\d{2})$/, '$1.$2').replace(',', '.').replace(/\s/g,'');
     if (!/^-?\d{1,4}\.\d{2}$/.test(num)) { pending = ''; continue; }
     const cents = toCents(num);
-    let name = line.slice(0, m.index).replace(/[\s.$:\-]+$/,'').trim();
-    if (!/[A-Za-z]{2}/.test(name) && pending) name = pending;
+    let name = line.slice(0, m.index + m[0].indexOf(m[1])).replace(/[\s.$:(\-]+$/,'').trim();
+    if (pending && !/[A-Za-z]{2}/.test(name) && (!/\d/.test(pending) || qtyStart.test(pending))) name = pending;
+    else if (pending && qtyStart.test(pending) && /^[^\d]*[A-Za-z]{2}/.test(name)) name = pending + ' ' + name;   // name wrapped onto this line
     pending = '';
     const low = name.toLowerCase();
-    if (/sub\s*-?\s*total/.test(low)) { out.subtotal = cents; continue; }
+    if (/sub\s*-?\s*total/.test(low)) { out.subtotal = cents; gapName = unpriced; continue; }
+    unpriced = '';
     if (/\btax\b|hst|gst|vat/.test(low)) { out.tax = (out.tax||0) + cents; continue; }
     if (/\btip\b|gratuity|service charge/.test(low) && !/suggest|guide/.test(low)) { out.tip = cents; continue; }
     if (/\btotal\b|amount due|balance due/.test(low) && !/sub/.test(low)) { out.total = Math.max(out.total||0, cents); continue; }
@@ -558,12 +569,18 @@ function parseReceipt(text){
     if (skip.test(low)) continue;
     if (cents <= 0 || cents > 100000) continue;
     name = name.replace(/^(?:[^A-Za-z0-9\s]+\s*)+/, '').replace(/^(?:[A-Za-z]\s+|[^\sA-Za-z0-9]{1,2}\s+)+(?=\S{2})/, '');   // junk marks before the name
-    let qty = 1; const q = name.match(/^(\d{1,2})\s*[xX@]?\s+([A-Za-z]{2}.*)$/);
-    if (q && +q[1] > 0 && +q[1] < 20) { qty = +q[1]; name = q[2]; }
+    let qty = 1; const q = name.match(/^(\d{1,2})\s*[xX@]?\s+((?:\(\d+\)\s*)?[A-Za-z]{2}.*)$/);
+    if (q && +q[1] > 0 && +q[1] < 20) { qty = +q[1] <= 5 ? +q[1] : 1; name = q[2].replace(/^\(\d+\)\s*/, ''); }   // 2 is often misread as 9
     else name = name.replace(/^(?:\S{1,2}\s+)+(?=[A-Za-z]{2})/, '');
     name = name.replace(/^[^A-Za-z0-9]+/,'').trim();
     if (name.length < 2 || !/[A-Za-z]{2}/.test(name)) continue;
     out.items.push({ name: titleCase(name) + (qty > 1 ? ` (x${qty})` : ''), cents });
+  }
+  // If the items come up short of the subtotal, one line's price couldn't be read: add the difference so the bill adds up
+  const gap = out.subtotal ? out.subtotal - out.items.reduce((a, i) => a + i.cents, 0) : 0;
+  if (gap > 0 && gap < out.subtotal) {
+    const n = gapName.replace(/^\W*\d{1,2}\s+(?:\(\d+\)\s*)?/, '');
+    out.items.push({ name: n ? titleCase(n) : 'Item (check receipt)', cents: gap, guessed: true });
   }
   return out;
 }
@@ -577,7 +594,8 @@ function applyParsed(r){
   S.receiptTotal = r.total;
   const found = r.items.length, w = $('#scanWarn');
   w.innerHTML = found
-    ? `Found ${found} item${found>1?'s':''}. Double-check names and prices against the receipt, scanning isn't perfect.`
+    ? `Found ${found} item${found>1?'s':''}. Double-check names and prices against the receipt, scanning isn't perfect.` +
+      (r.items.some(i => i.guessed) ? ` One price couldn't be read, so <strong>${esc(r.items.find(i => i.guessed).name)}</strong> was filled in from the subtotal.` : '')
     : `Couldn't pick out items from that photo. Type them in below, or retake it flat and well lit.`;
   w.innerHTML += ` <button class="ghost" id="viewReceipt" style="padding:0">View receipt</button>`;
   w.classList.remove('hidden');
