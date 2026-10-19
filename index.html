@@ -5,8 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Triangle Splitter</title>
 <meta name="description" content="Snap a receipt, tap who had what, get paid on Venmo or Zelle.">
-<meta name="theme-color" content="#F6F1E7" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#1C1A17" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#1C1A17">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -16,15 +15,11 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <style>
 :root{
-  --bg:#F6F1E7; --card:#FFFDF8; --ink:#25221D; --muted:#7A7266; --line:#E7DFD0;
-  --accent:#1F8A5B; --accent-ink:#fff; --accent-soft:#DDF0E5; --danger:#C2482F;
-  --shadow:0 2px 10px rgba(60,45,20,.07),0 1px 2px rgba(60,45,20,.05);
+  color-scheme:dark;
+  --bg:#1C1A17; --card:#272420; --ink:#F2EDE4; --muted:#A69D8F; --line:#3A352E;
+  --accent:#3FBF83; --accent-ink:#10251A; --accent-soft:#1F3A2C; --danger:#E9775E;
+  --shadow:0 2px 10px rgba(0,0,0,.3);
   --r:20px;
-}
-@media (prefers-color-scheme: dark){
-  :root{--bg:#1C1A17;--card:#272420;--ink:#F2EDE4;--muted:#A69D8F;--line:#3A352E;
-    --accent:#3FBF83;--accent-ink:#10251A;--accent-soft:#1F3A2C;--danger:#E9775E;
-    --shadow:0 2px 10px rgba(0,0,0,.3);}
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:var(--bg);color:var(--ink);
@@ -96,8 +91,7 @@ textarea:focus,input:focus{border-color:var(--accent)}
   background:linear-gradient(transparent,var(--bg) 30%)}
 .bar .wrap{padding:0;display:flex;gap:10px}
 .bar .btn.sec{width:auto;padding:0 20px}
-.warn{background:#FFF3D6;color:#7A5300;border-radius:12px;padding:10px 12px;font-size:14px;margin-bottom:12px}
-@media (prefers-color-scheme: dark){.warn{background:#3B3020;color:#F1CF85}}
+.warn{background:#3B3020;color:#F1CF85;border-radius:12px;padding:10px 12px;font-size:14px;margin-bottom:12px}
 .ok{background:var(--accent-soft);color:var(--accent);border-radius:12px;padding:10px 12px;font-size:14px;font-weight:600;margin:10px 0 0}
 .progress{height:8px;background:var(--line);border-radius:8px;overflow:hidden;margin:14px 0 6px}
 .progress div{height:100%;width:0;background:var(--accent);transition:width .2s}
@@ -113,8 +107,7 @@ textarea:focus,input:focus{border-color:var(--accent)}
 .sheet{position:fixed;inset:0;background:rgba(20,15,5,.45);z-index:20;display:flex;align-items:flex-end;justify-content:center}
 .sheet > div{background:var(--card);width:100%;max-width:560px;border-radius:24px 24px 0 0;padding:22px 16px calc(22px + env(safe-area-inset-bottom));max-height:88vh;overflow-y:auto}
 .gbtn{background:#fff;color:#1f1f1f;border:1.5px solid #dadce0}
-.abtn{background:#000;color:#fff}
-@media (prefers-color-scheme: dark){.abtn{background:#fff;color:#000}}
+.abtn{background:#fff;color:#000}
 .big-owe{font-size:46px;font-weight:800;letter-spacing:-1.5px;color:var(--accent);margin:4px 0}
 .mine{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line);cursor:pointer;width:100%;background:none;border-left:0;border-right:0;border-bottom:0;font:inherit;color:inherit;text-align:left}
 .mine:first-child{border-top:0}
