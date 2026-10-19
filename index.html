@@ -84,7 +84,7 @@ textarea:focus,input:focus{border-color:var(--accent)}
 .res{display:flex;gap:12px;align-items:center;padding:14px 0;border-top:1px solid var(--line)}
 .res:first-child{border-top:0;padding-top:0}
 .amt{font-size:24px;font-weight:800;color:var(--accent);letter-spacing:-.5px}
-.paidchip{margin-top:6px;min-height:34px;font-size:13px;padding:0 10px}
+.paidchip{margin-top:6px;min-height:34px;font-size:13px;padding:0 10px;white-space:nowrap}
 .paidchip.on{background:var(--accent)}
 .res.isPaid .amt{color:var(--muted);text-decoration:line-through}
 .bar{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));
@@ -266,7 +266,7 @@ const $ = s => document.querySelector(s);
 const COLORS = ['#E2683C','#2F7DD1','#8E5BD6','#D1447A','#C99417','#16958F','#5A6B7D','#B5582D'];
 const LS_KEY = 'splitit.people';
 const S = { screen:0, people:[], items:[], tax:0, tip:0, tipPct:null, mode:'prop', receiptTotal:null,
-            note:'', billId:null, shared:false, members:[], sentSig:null, msgMode:null, msgEdited:false, counted:[] };
+            note:'', billId:null, shared:false, members:[], sentSig:null, msgMode:null, msgEdited:false, counted:[], adj:{} };
 const id = () => Math.random().toString(36).slice(2, 10);
 const money = c => (c<0?'-':'') + '$' + (Math.abs(c)/100).toFixed(2);
 const toCents = v => { const n = parseFloat(String(v).replace(/[^0-9.\-]/g,'')); return isNaN(n) ? 0 : Math.round(n*100); };
@@ -287,7 +287,7 @@ function saveLocal(){
   if (!hasContent && !S.billId) return;                 // don't save empty bills
   if (!S.billId) S.billId = 'l_' + id();
   const rows = allPeople().length ? compute() : [], others = rows.filter(r => !r.me);
-  const b = { id:S.billId, note:S.note || '', items:S.items, people:S.people, tax:S.tax || 0, tip:S.tip || 0, tipPct:S.tipPct ?? null,
+  const b = { id:S.billId, note:S.note || '', items:S.items, people:S.people, adj:S.adj, tax:S.tax || 0, tip:S.tip || 0, tipPct:S.tipPct ?? null,
     mode:S.mode, total:rows.reduce((a, r) => a + r.total, 0), peopleCount:others.length, paidCount:others.filter(r => r.paid).length, updatedAt:Date.now() };
   storeBills([b, ...loadBills().filter(x => x.id !== b.id)]);
 }
@@ -423,7 +423,7 @@ $('#restart').onclick = () => { const kept = S.billId || S.items.some(i => i.pri
 function reset(){
   if (cloud()) cloud().closeBill(); else saveLocal();
   Object.assign(S, {people:[], items:[], tax:0, tip:0, tipPct:null, mode:'prop', receiptTotal:null, note:'',
-    billId:null, shared:false, members:[], sentSig:null, msgMode:null, msgEdited:false, counted:[]});
+    billId:null, shared:false, members:[], sentSig:null, msgMode:null, msgEdited:false, counted:[], adj:{}});
   $('#tax').value=''; $('#tip').value=''; $('#note').value=''; $('#scanCard').classList.add('hidden'); $('#scanWarn').classList.add('hidden'); $('#itemsThumb').classList.add('hidden');
   $('#cam').value=''; setTipSeg(); setModeSeg(); go(0);
 }
@@ -436,7 +436,7 @@ function ensureMe(){
 function loadBill(b){
   Object.assign(S, { people:b.people||[], items:b.items||[], tax:b.tax||0, tip:b.tip||0, tipPct:b.tipPct ?? null,
     mode:b.mode||'prop', note:b.note||'', billId:b.id, shared:!!b.shared, sentSig:b.sentSig||null, receiptTotal:null, msgEdited:false, msgMode:null,
-    counted:(b.people||[]).map(p => lc(p.name)) });
+    counted:(b.people||[]).map(p => lc(p.name)), adj:b.adj || {} });
   $('#tax').value = S.tax ? (S.tax/100).toFixed(2) : ''; $('#tip').value = S.tip ? (S.tip/100).toFixed(2) : '';
   $('#note').value = S.note; setTipSeg(); setModeSeg();
 }
@@ -779,30 +779,64 @@ function compute(){
   }
   const wt = S.mode === 'even' ? ids.map(() => 1) : ids.map(i => food[i]);
   const tax = allocate(S.tax, wt), tip = allocate(S.tip, wt);
-  return ppl.map((p,k) => ({ ...p, food: food[p.id], tax: tax[k], tip: tip[k], total: food[p.id] + tax[k] + tip[k] }));
+  return adjust(ppl.map((p,k) => ({ ...p, food: food[p.id], tax: tax[k], tip: tip[k], total: food[p.id] + tax[k] + tip[k] })));
+}
+// Fixes after the split. S.adj = {personId: {fixed: manual amount, coveredBy: personId, requested: amount asked for on Venmo}}
+function adjust(rows){
+  const get = r => (S.adj || {})[r.id] || {};
+  rows.forEach(r => r.base = r.total);
+  const fixed = rows.filter(r => get(r).fixed != null), rest = rows.filter(r => get(r).fixed == null);
+  if (fixed.length) {
+    const left = rows.reduce((a, r) => a + r.base, 0) - fixed.reduce((a, r) => a + get(r).fixed, 0);
+    fixed.forEach(r => r.total = get(r).fixed);
+    // everyone else splits what's left, in proportion to what they ordered
+    if (rest.length) allocate(Math.max(0, left), rest.map(r => r.base || 1)).forEach((c, k) => rest[k].total = c);
+  }
+  for (const r of rows) {
+    const to = rows.find(x => x.id === get(r).coveredBy && x.id !== r.id && !get(x).coveredBy);
+    if (!to || !r.total) continue;
+    to.total += r.total; to.covering = [...(to.covering || []), r.name];
+    r.coveredBy = to.name; r.total = 0;
+  }
+  return rows;
+}
+function setAdj(pid, patch){
+  S.adj = {...S.adj, [pid]: {...(S.adj[pid] || {}), ...patch}};
+  S.msgEdited = false; changed(); renderResults();
 }
 
 /* ---------- Results ---------- */
 $('#note').oninput = () => { S.note = $('#note').value; S.msgEdited = false; changed(); renderResults(); };
 function renderResults(){
-  const rows = compute(), grand = rows.reduce((a,r) => a + r.total, 0);
+  const rows = compute(), grand = rows.reduce((a,r) => a + r.base, 0), charged = rows.reduce((a,r) => a + r.total, 0);
   const note = S.note || 'Dinner';
-  $('#resSub').textContent = `${money(grand)} total · tax & tip split ${S.mode === 'even' ? 'evenly' : 'by what each person ordered'}`;
+  $('#resSub').innerHTML = `${money(grand)} total · tax & tip split ${S.mode === 'even' ? 'evenly' : 'by what each person ordered'}` +
+    (charged !== grand ? `<div class="warn" style="margin-top:8px">Amounts add up to ${money(charged)}, but the bill is ${money(grand)}. Check the amounts you set.</div>` : '');
   const pay = loadPay(), zelle = pay.method === 'zelle' && pay.zelle;
   if (pay.method === 'zelle') rows.forEach(r => r.venmo = '');   // Zelle has no request links
   const others = rows.filter(r => !r.me), paidN = others.filter(r => r.paid).length;
   $('#resList').innerHTML = rows.map((r,k) => {
-    const url = r.venmo && !r.me ? `https://venmo.com/?txn=charge&audience=private&recipients=${encodeURIComponent(r.venmo)}&amount=${(r.total/100).toFixed(2)}&note=${encodeURIComponent(note)}` : '';
-    const action = r.me ? '' : url ? `<a class="btn small" style="margin-top:6px" href="${url}">Request</a>`
-                          : `<button class="btn sec small" data-copy="${k}" style="margin-top:6px">${zelle ? 'Copy Zelle' : 'Copy'}</button>`;
-    const paidBtn = r.me ? '' : `<button class="chip paidchip ${r.paid?'on':''}" data-paid="${k}">${r.paid ? '✓ Paid' : r.iPaid ? 'Says paid · confirm' : 'Mark paid'}</button>`;
+    const venmo = (txn, amt) => `https://venmo.com/?txn=${txn}&audience=private&recipients=${encodeURIComponent(r.venmo)}&amount=${(amt/100).toFixed(2)}&note=${encodeURIComponent(note)}`;
+    const req = ((S.adj || {})[r.id] || {}).requested, diff = req != null ? r.total - req : 0;
+    // Venmo requests can't be changed once sent, so after a fix ask for (or pay back) just the difference
+    const action = r.me || !r.total && req == null ? '' : !r.venmo
+        ? (r.total ? `<button class="btn sec small" data-copy="${k}" style="margin-top:6px">${zelle ? 'Copy Zelle' : 'Copy'}</button>` : '')
+      : req == null ? `<a class="btn small" style="margin-top:6px" data-req="${k}" href="${venmo('charge', r.total)}">Request</a>`
+      : diff > 0 ? `<a class="btn small" style="margin-top:6px" data-req="${k}" href="${venmo('charge', diff)}">Request ${money(diff)} more</a>`
+      : diff < 0 ? `<a class="btn sec small" style="margin-top:6px" data-req="${k}" href="${venmo('pay', -diff)}">Pay back ${money(-diff)}</a>`
+      : `<a class="btn sec small" style="margin-top:6px" data-req="${k}" href="${venmo('charge', r.total)}">✓ Requested</a>`;
+    const reqNote = req != null && diff ? `<div class="muted" style="font-size:13px">Requested ${money(req)}</div>` : '';
+    const how = r.coveredBy ? `🎁 Covered by ${esc(r.coveredBy)}`
+      : ((S.adj || {})[r.id] || {}).fixed != null ? `Set amount${r.base !== r.total ? ` · was ${money(r.base)}` : ''}`
+      : `${money(r.food)} + ${money(r.tax)} tax + ${money(r.tip)} tip${r.base !== r.total && !r.covering ? ' · adjusted' : ''}`;
+    const paidBtn = r.me || r.coveredBy ? '' : `<button class="chip paidchip ${r.paid?'on':''}" data-paid="${k}">${r.paid ? '✓ Paid' : r.iPaid ? 'Says paid · confirm' : 'Mark paid'}</button>`;
     return `<div class="res ${r.paid?'isPaid':''}">
       <div class="badge" style="background:${r.color}">${initial(r.name)}</div>
       <div class="grow"><strong>${esc(r.name)}</strong> ${r.me ? '<span class="tag">you</span>' : ''}
-        <div class="muted">${money(r.food)} + ${money(r.tax)} tax + ${money(r.tip)} tip</div>
-        ${paidBtn}</div>
+        <div class="muted">${how}${r.covering ? `<br>Includes ${esc(r.covering.join(', '))}` : ''}</div>
+        ${paidBtn} <button class="chip paidchip" data-edit="${k}">✏️ Edit</button></div>
       <div style="text-align:right">
-        <div class="amt">${money(r.total)}</div>${r.paid ? '' : action}
+        <div class="amt">${money(r.total)}</div>${reqNote}${r.paid ? '' : action}
       </div></div>`;
   }).join('') + (others.length ? `<div class="muted" style="margin-top:12px;text-align:center">${paidN} of ${others.length} paid</div>` : '');
   $('#resList').querySelectorAll('[data-copy]').forEach(b => b.onclick = () => {
@@ -810,6 +844,13 @@ function renderResults(){
     if (zelle) copy(`${note}: you owe ${money(t)}. Zelle me at ${pay.zelle} 🙏`, 'Zelle message copied');
     else copy((t/100).toFixed(2), 'Amount copied');
   });
+  $('#resList').querySelectorAll('[data-req]').forEach(b => b.addEventListener('click', () => {
+    // save right away: the phone is about to switch to the Venmo app
+    const r = rows[+b.dataset.req]; S.adj = {...S.adj, [r.id]: {...(S.adj[r.id] || {}), requested: r.total}};
+    if (cloud()) cloud().flush(); else saveLocal();
+    setTimeout(renderResults, 300);
+  }));
+  $('#resList').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => openEdit(rows[+b.dataset.edit].id));
   $('#resList').querySelectorAll('[data-paid]').forEach(b => b.onclick = () => {
     const r = rows[+b.dataset.paid], on = !r.paid;
     if (r.member) { cloud() && cloud().setMemberPaid(r.uid, on); S.members.find(m => m.uid === r.uid).paid = on; }
@@ -848,6 +889,38 @@ function renderResults(){
   }
   updateSms();
 }
+/* ---------- Edit one person's share ---------- */
+function openEdit(pid){
+  const r = compute().find(x => x.id === pid); if (!r) return closeSheet();
+  const A = S.adj[pid] || {}, others = allPeople().filter(p => p.id !== pid);
+  openSheet(`<h2>${esc(r.name)} · ${money(r.total)}</h2>
+    <div class="muted" style="margin:4px 0 8px">What they had</div>
+    ${r.member ? '<p class="muted">They check off their own items from your link.</p>'
+      : S.items.filter(i => i.price).map(i => { const on = whoOf(i).includes(pid) || !whoOf(i).length; return `
+        <button class="mine ${on ? 'on' : ''}" data-it="${i.id}"><span class="box">${on ? '✓' : ''}</span>
+          <span class="grow">${esc(i.name || 'Item')}</span><span class="muted">${money(i.price)}</span></button>`; }).join('')}
+    <div class="muted" style="margin:16px 0 6px">Their amount</div>
+    <div class="row"><input id="eFixed" inputmode="decimal" placeholder="Automatic (${money(r.base)})" value="${A.fixed != null ? (A.fixed/100).toFixed(2) : ''}">
+      <button class="btn sec small" id="eAuto">Automatic</button></div>
+    <div class="muted" style="font-size:13px;margin-top:4px">Set an amount and everyone else splits the rest.</div>
+    <div class="muted" style="margin:16px 0 6px">Who pays for them</div>
+    <div class="chips"><button class="chip ${A.coveredBy ? '' : 'on'}" data-cover="" style="${A.coveredBy ? '' : 'background:var(--accent)'}">Themselves</button>
+      ${others.map(p => `<button class="chip ${A.coveredBy === p.id ? 'on' : ''}" data-cover="${p.id}" style="${A.coveredBy === p.id ? 'background:var(--accent)' : ''}">🎁 ${esc(p.me ? 'You' : p.name)}</button>`).join('')}</div>
+    <button class="btn" id="eDone" style="margin-top:18px">Done</button>`);
+  const body = $('#sheetBody'), redo = () => openEdit(pid);
+  body.querySelectorAll('[data-it]').forEach(b => b.onclick = () => {
+    const it = S.items.find(i => i.id === b.dataset.it);
+    // an item nobody's tapped is shared by everyone, so unchecking it means "everyone but them"
+    if (!whoOf(it).length) it.who = S.people.map(p => p.id).filter(x => x !== pid);
+    else it.who = it.who.includes(pid) ? it.who.filter(w => w !== pid) : [...it.who, pid];
+    S.msgEdited = false; changed(); renderResults(); redo();
+  });
+  $('#eFixed').onchange = () => { const v = $('#eFixed').value.trim(); setAdj(pid, { fixed: v === '' ? null : toCents(v) }); redo(); };
+  $('#eAuto').onclick = () => { setAdj(pid, { fixed: null }); redo(); };
+  body.querySelectorAll('[data-cover]').forEach(b => b.onclick = () => { setAdj(pid, { coveredBy: b.dataset.cover || null }); redo(); });
+  $('#eDone').onclick = closeSheet;
+}
+
 /* ---------- How you get paid (Venmo or Zelle) ---------- */
 const PAY_KEY = 'splitit.pay';
 function loadPay(){ try { return {method:'venmo', venmo:'', zelle:'', ...JSON.parse(localStorage.getItem(PAY_KEY))}; } catch(e){ return {method:'venmo', venmo:'', zelle:''}; } }
@@ -884,7 +957,7 @@ function groupText(rows, grand, note){
   const lines = rows.map(r => {
     const mine = S.items.filter(i => i.price && (whoOf(i).includes(r.id) || !whoOf(i).length)).map(i => i.name || 'item');
     const what = mine.length ? ` (${mine.slice(0,3).join(', ')}${mine.length > 3 ? ` +${mine.length-3} more` : ''})` : '';
-    return `• ${r.name}: ${money(r.total)}${what}`;
+    return r.coveredBy ? `• ${r.name}: covered by ${r.coveredBy} 🎁` : `• ${r.name}: ${money(r.total)}${what}`;
   });
   return `${note} split 🧾\n\n${lines.join('\n')}\n\nTotal ${money(grand)}, tax & tip included (split ${S.mode === 'even' ? 'evenly' : 'by what you ordered'}).\n` +
     ask;

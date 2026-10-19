@@ -96,7 +96,7 @@ function init() {
       ownerId: C.user.uid, ownerName: C.user.displayName || 'Someone',
       note: S.note || '', items: S.items.map(i => ({ id: i.id, name: i.name || '', price: i.price || 0, who: i.who || [] })),
       people: S.people.map(p => ({ id: p.id, name: p.name, venmo: p.venmo || '', me: !!p.me, paid: !!p.paid })),
-      tax: S.tax || 0, tip: S.tip || 0, tipPct: S.tipPct ?? null, mode: S.mode, shared: !!S.shared, sentSig: S.sentSig || null,
+      adj: S.adj || {}, tax: S.tax || 0, tip: S.tip || 0, tipPct: S.tipPct ?? null, mode: S.mode, shared: !!S.shared, sentSig: S.sentSig || null,
       total: rows.reduce((a, r) => a + r.total, 0), peopleCount: others.length, paidCount: others.filter(r => r.paid).length,
       updatedAt: F.serverTimestamp(),
     };
@@ -233,7 +233,7 @@ function init() {
       ${has ? `<div class="card" style="text-align:center">
           <div class="muted">You owe ${first}</div>
           <div class="big-owe">${money(me.amount)}</div>
-          <div class="muted">${money(me.food || 0)} food + ${money(me.tax || 0)} tax + ${money(me.tip || 0)} tip</div>
+          ${(me.food || 0) + (me.tax || 0) + (me.tip || 0) === me.amount ? `<div class="muted">${money(me.food || 0)} food + ${money(me.tax || 0)} tax + ${money(me.tip || 0)} tip</div>` : ''}
           ${me.paid ? `<div class="ok">✓ ${first} marked you as paid</div>` : `
             ${pay ? `<a class="btn" style="margin-top:16px" href="${pay}">Pay ${first} on Venmo</a>` : ''}
             ${zelle ? `<div class="muted" style="margin-top:16px">Pay ${first} with Zelle in your bank app:</div>
