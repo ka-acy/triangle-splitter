@@ -94,7 +94,7 @@ function init() {
     const rows = compute(), others = rows.filter(r => !r.me);
     const data = {
       ownerId: C.user.uid, ownerName: C.user.displayName || 'Someone',
-      note: S.note || '', items: S.items.map(i => ({ id: i.id, name: i.name || '', price: i.price || 0, who: i.who || [] })),
+      note: S.note || '', items: S.items.map(i => ({ id: i.id, name: i.name || '', price: i.price || 0, who: i.who || [], shares: i.shares || {} })),
       people: S.people.map(p => ({ id: p.id, name: p.name, venmo: p.venmo || '', me: !!p.me, paid: !!p.paid })),
       adj: S.adj || {}, tax: S.tax || 0, tip: S.tip || 0, tipPct: S.tipPct ?? null, mode: S.mode, shared: !!S.shared, sentSig: S.sentSig || null,
       total: rows.reduce((a, r) => a + r.total, 0), peopleCount: others.length, paidCount: others.filter(r => r.paid).length,

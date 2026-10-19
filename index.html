@@ -705,6 +705,7 @@ function removeFriend(name){
 
 /* ---------- Items ---------- */
 $('#addItem').onclick = () => { S.items.push({id:id(), name:'', price:0, who:[]}); renderItems(); const ins = document.querySelectorAll('#itemList input.n'); ins[ins.length-1].focus(); };
+const openShares = new Set();   // items showing the uneven-split controls
 function renderItems(){
   const ppl = allPeople();
   $('#itemList').innerHTML = S.items.map(it => {
@@ -717,22 +718,47 @@ function renderItems(){
       </div>
       <div class="chips">
         ${ppl.map(p => { const on = who.includes(p.id);
-          return `<button class="chip ${on?'on':''}" data-p="${p.id}" style="${on?`background:${p.color}`:`border-color:${p.color}55`}">${esc(p.name)}</button>`; }).join('')}
+          const n = on && who.length > 1 ? (it.shares || {})[p.id] || 1 : 1;
+          return `<button class="chip ${on?'on':''}" data-p="${p.id}" style="${on?`background:${p.color}`:`border-color:${p.color}55`}">${esc(p.name)}${n > 1 ? ` ×${n}` : ''}</button>`; }).join('')}
         ${ppl.length > 1 ? `<button class="chip all ${all?'on':''}" data-all="1" style="${all?'background:var(--accent)':''}">Everyone</button>` : ''}
-      </div></div>`;
+      </div>${sharesHtml(it, who, ppl)}</div>`;
   }).join('');
   $('#itemList').querySelectorAll('.item').forEach(el => {
     const it = S.items.find(i => i.id === el.dataset.id);
     el.querySelector('.n').oninput = e => { it.name = e.target.value; changed(); };
     el.querySelector('.p').oninput = e => { it.price = toCents(e.target.value); el.classList.toggle('unassigned', !!it.price && !whoOf(it).length); recalc(); updateNext(); changed(); };
     el.querySelector('.x').onclick = () => { S.items = S.items.filter(i => i !== it); changed(); renderItems(); };
-    el.querySelectorAll('.chip').forEach(c => c.onclick = () => {
+    const sb = el.querySelector('[data-shares]');
+    if (sb) sb.onclick = () => {
+      if (openShares.has(it.id)) { openShares.delete(it.id); delete it.shares; changed(); } else openShares.add(it.id);
+      renderItems();
+    };
+    el.querySelectorAll('[data-step]').forEach(b => b.onclick = () => {
+      const sh = it.shares = {...it.shares}, pid = b.dataset.pid;
+      sh[pid] = Math.min(20, Math.max(1, (sh[pid] || 1) + +b.dataset.step));
+      changed(); renderItems();
+    });
+    el.querySelectorAll('.chips .chip').forEach(c => c.onclick = () => {
       if (c.dataset.all) { const on = !ppl.every(p => whoOf(it).includes(p.id)); ppl.forEach(p => setWho(it, p, on)); }
       else { const p = ppl.find(x => x.id === c.dataset.p); setWho(it, p, !whoOf(it).includes(p.id)); }
       changed(); renderItems();
     });
   });
   recalc(); updateNext();
+}
+// "Split unevenly": a share count per person on a shared item, with what each pays
+function sharesHtml(it, who, ppl){
+  if (who.length < 2) return '';
+  const sh = it.shares || {}, open = openShares.has(it.id) || who.some(x => (sh[x] || 1) !== 1);
+  if (open) openShares.add(it.id);
+  const part = allocate(it.price || 0, who.map(x => sh[x] || 1));
+  return `<button class="ghost" data-shares="1" style="padding:8px 0 0;font-size:14px">${open ? 'Split evenly instead' : '⚖️ Split unevenly'}</button>` +
+    (open ? who.map((x, k) => { const p = ppl.find(q => q.id === x); return p ? `
+      <div class="row" style="margin-top:8px"><span class="grow">${esc(p.name)}</span>
+        <button class="chip" data-step="-1" data-pid="${x}" aria-label="Fewer shares">−</button>
+        <strong style="width:24px;text-align:center">${sh[x] || 1}</strong>
+        <button class="chip" data-step="1" data-pid="${x}" aria-label="More shares">+</button>
+        <span class="muted" style="width:64px;text-align:right">${money(part[k])}</span></div>` : ''; }).join('') : '');
 }
 function setWho(it, p, on){
   if (p.member) { cloud() && cloud().setMemberClaim(p.uid, it.id, on); const m = S.members.find(m => m.uid === p.uid);
@@ -775,7 +801,7 @@ function compute(){
   for (const it of S.items) {
     if (!it.price) continue;
     const w = whoOf(it).filter(x => ids.includes(x)), who = w.length ? w : ids;
-    allocate(it.price, who.map(() => 1)).forEach((c,k) => food[who[k]] += c);
+    allocate(it.price, who.map(x => (it.shares || {})[x] || 1)).forEach((c,k) => food[who[k]] += c);   // shares: Sam ×2, Jo ×1
   }
   const wt = S.mode === 'even' ? ids.map(() => 1) : ids.map(i => food[i]);
   const tax = allocate(S.tax, wt), tip = allocate(S.tip, wt);
