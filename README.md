@@ -9,4 +9,6 @@ Snap a receipt, tap who had what, and request on Venmo. Installable web app (add
 - `sw.js` – offline support
 - `firebase.js` – bundled Firebase SDK (don't edit)
 
-Setup steps are in [SETUP.md](SETUP.md).
+Hosted on Firebase Hosting at https://trianglesplitter.web.app. Every push to `main` publishes automatically (`.github/workflows/deploy.yml`, needs the `FIREBASE_SERVICE_ACCOUNT` repo secret). The old Netlify address redirects there via `_redirects`.
+
+Setup steps are in [SETUP.md](SETUP.md). They describe the original Netlify setup; on Firebase Hosting, skip the `_redirects` step and use your `web.app` address.

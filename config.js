@@ -4,7 +4,7 @@
 window.SPLITIT_CONFIG = {
   firebase: {
     apiKey: "AIzaSyDKMsqFOoD0AHHLWGbq8C4XwH_IC4LooO4",
-    authDomain: "trianglesplitter.netlify.app",   // <- your site's address, NOT the firebaseapp.com one
+    authDomain: "trianglesplitter.web.app",   // <- the site's own address, so sign-in works from the iPhone Home Screen
     projectId: "trianglesplitter",
     storageBucket: "trianglesplitter.firebasestorage.app",
     messagingSenderId: "990076289162",

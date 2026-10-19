@@ -1,3 +1,2 @@
-# Lets Google sign-in work on your own web address (needed for iPhone Home Screen apps).
-# Replace YOUR-PROJECT-ID with your Firebase project ID (see SETUP.md, step 5).
-/__/auth/*  https://trianglesplitter.firebaseapp.com/__/auth/:splat  200
+# The app moved to Firebase Hosting. Send old Netlify links there.
+/*  https://trianglesplitter.web.app/:splat  301!
