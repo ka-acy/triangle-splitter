@@ -922,9 +922,15 @@ function openEdit(pid){
   openSheet(`<h2>${esc(r.name)} · ${money(r.total)}</h2>
     <div class="muted" style="margin:4px 0 8px">What they had</div>
     ${r.member ? '<p class="muted">They check off their own items from your link.</p>'
-      : S.items.filter(i => i.price).map(i => { const on = whoOf(i).includes(pid) || !whoOf(i).length; return `
-        <button class="mine ${on ? 'on' : ''}" data-it="${i.id}"><span class="box">${on ? '✓' : ''}</span>
-          <span class="grow">${esc(i.name || 'Item')}</span><span class="muted">${money(i.price)}</span></button>`; }).join('')}
+      : S.items.filter(i => i.price).map(i => {
+          const w = whoOf(i), on = w.includes(pid) || !w.length, shared = on && (w.length || allPeople().length) > 1, n = (i.shares || {})[pid] || 1;
+          return `<div class="row" style="gap:6px">
+          <button class="mine grow ${on ? 'on' : ''}" data-it="${i.id}"><span class="box">${on ? '✓' : ''}</span>
+            <span class="grow">${esc(i.name || 'Item')}</span><span class="muted">${money(i.price)}</span></button>
+          ${shared ? `<button class="chip" data-st="-1" data-item="${i.id}" aria-label="Fewer shares">−</button>
+            <strong style="width:30px;text-align:center">×${n}</strong>
+            <button class="chip" data-st="1" data-item="${i.id}" aria-label="More shares">+</button>` : ''}</div>`; }).join('')}
+    ${r.member ? '' : '<div class="muted" style="font-size:13px;margin-top:4px">Use − / + to give them a bigger share of a shared item.</div>'}
     <div class="muted" style="margin:16px 0 6px">Their amount</div>
     <div class="row"><input id="eFixed" inputmode="decimal" placeholder="Automatic (${money(r.base)})" value="${A.fixed != null ? (A.fixed/100).toFixed(2) : ''}">
       <button class="btn sec small" id="eAuto">Automatic</button></div>
@@ -939,6 +945,11 @@ function openEdit(pid){
     // an item nobody's tapped is shared by everyone, so unchecking it means "everyone but them"
     if (!whoOf(it).length) it.who = S.people.map(p => p.id).filter(x => x !== pid);
     else it.who = it.who.includes(pid) ? it.who.filter(w => w !== pid) : [...it.who, pid];
+    S.msgEdited = false; changed(); renderResults(); redo();
+  });
+  body.querySelectorAll('[data-st]').forEach(b => b.onclick = () => {
+    const it = S.items.find(i => i.id === b.dataset.item), sh = it.shares = {...it.shares};
+    sh[pid] = Math.min(20, Math.max(1, (sh[pid] || 1) + +b.dataset.st));
     S.msgEdited = false; changed(); renderResults(); redo();
   });
   $('#eFixed').onchange = () => { const v = $('#eFixed').value.trim(); setAdj(pid, { fixed: v === '' ? null : toCents(v) }); redo(); };
