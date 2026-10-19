@@ -1,6 +1,6 @@
 {
   "name": "Triangle Splitter – Bill Splitter",
-  "short_name": "Triangle Splitter",
+  "short_name": "TriSplit",
   "description": "Snap a receipt, tap who had what, request on Venmo.",
   "start_url": "./",
   "scope": "./",
