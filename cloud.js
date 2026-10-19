@@ -125,8 +125,10 @@ function init() {
       updatedAt: F.serverTimestamp(),
     };
   }
+  // The link is ready as soon as the bill has an id; saving carries on in the background
+  // (a friend who opens it a moment early sees it fill in when the save lands).
   C.ensurePublic = async () => {
-    S.public = true; await C.flush();
+    if (!S.public || !S.billId) { S.public = true; C.flush(); }
     return location.origin + location.pathname + '#bill/' + S.billId;
   };
   C.photoChanged = () => { photoFor = null; };   // upload the new photo on the next save
@@ -245,7 +247,8 @@ function init() {
     let photo = null, sum = null;
     const draw = () => renderView(el, sum, photo);
     unsubJoin.push(F.onSnapshot(viewRef(bid, 'summary'), s => {
-      if (!s.exists()) { el.innerHTML = `<h1>Bill not found.</h1><p class="sub">The link may be wrong, or the bill was deleted.</p><a class="btn sec" href="./">Go home</a>`; return; }
+      // a link opened the moment it was sent may arrive before the save does: this fills in when it lands
+      if (!s.exists()) { el.innerHTML = `<h1>Loading the bill…</h1><p class="sub">If this doesn't change in a few seconds, the link may be wrong or the bill was deleted.</p><a class="btn sec" href="./">Go home</a>`; return; }
       sum = s.data(); draw();
       if (sum.hasPhoto && !photo) C.loadPhoto(bid).then(p => { photo = p; draw(); });
     }, e => { console.warn(e); el.innerHTML = '<h1>Couldn\'t load this bill.</h1><p class="sub">Check your connection and try again.</p>'; }));
