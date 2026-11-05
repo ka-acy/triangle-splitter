@@ -1,52 +1,33 @@
 rules_version = '2';
 // Triangle Splitter security rules. Published automatically on every push to main (.github/workflows/deploy.yml).
+// Accounts are plain usernames with no password, so there is no sign-in to check:
+// anyone who knows a username (or a bill id) can read and change that data.
 service cloud.firestore {
   match /databases/{db}/documents {
-    function signedIn() { return request.auth != null; }
+    function validName(n) { return n.matches('^[a-z0-9_.-]{3,30}$'); }
 
-    // Your profile: saved friends + your Venmo. Only you.
+    // Profile: saved friends + Venmo/Zelle, keyed by username.
     match /users/{uid} {
-      allow read, write: if signedIn() && request.auth.uid == uid;
+      allow read, write: if validName(uid);
       match /joined/{billId} {
-        allow read, write: if signedIn() && request.auth.uid == uid;
+        allow read, write: if validName(uid);
       }
     }
 
     match /bills/{billId} {
-      function isOwner() {
-        return signedIn() && get(/databases/$(db)/documents/bills/$(billId)).data.ownerId == request.auth.uid;
-      }
-      function locked() {
-        return get(/databases/$(db)/documents/bills/$(billId)/public/menu).data.get('locked', false) == true;
-      }
+      allow create: if validName(request.resource.data.ownerId);
+      allow read, delete: if true;
+      allow update: if validName(request.resource.data.ownerId);
 
-      // The full bill (everyone's amounts): host only.
-      allow create: if signedIn() && request.resource.data.ownerId == request.auth.uid;
-      allow read, delete: if signedIn() && resource.data.ownerId == request.auth.uid;
-      allow update: if signedIn() && resource.data.ownerId == request.auth.uid
-                    && request.resource.data.ownerId == request.auth.uid;
+      match /public/{doc} { allow read, write: if true; }
+      match /view/{doc}   { allow read, write: if true; }
 
-      // Item list friends see when they open the link (no names, no amounts).
-      match /public/{doc} {
-        allow read: if signedIn();
-        allow write: if isOwner();
-      }
-
-      // Shared view: everyone's amounts and the receipt photo. Anyone with the link can read; only the host writes.
-      match /view/{doc} {
-        allow read: if true;
-        allow write: if isOwner();
-      }
-
-      // One doc per friend who joined. A friend can read only their own.
+      // One doc per friend who joined, keyed by their username.
       match /members/{uid} {
-        allow read: if isOwner() || (signedIn() && request.auth.uid == uid);
-        allow create: if signedIn() && request.auth.uid == uid
+        allow read, delete: if true;
+        allow create: if validName(uid)
           && request.resource.data.keys().hasOnly(['name', 'venmo', 'claims', 'iPaid', 'joinedAt']);
-        allow update: if isOwner() || (signedIn() && request.auth.uid == uid
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'venmo', 'claims', 'iPaid'])
-          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['claims']) || !locked()));
-        allow delete: if isOwner();
+        allow update: if true;   // the "finalized" lock is enforced in the app (no way to tell host from friend here)
       }
     }
   }

@@ -4,7 +4,7 @@ Triangle Splitter works right away with no accounts. Everything stays on the pho
 To turn on **sign-in** (saved bills, sync, paid tracking, invite links), connect it to a free Firebase project.
 It takes about 15 minutes, once. Firebase's free plan is plenty for a friend group.
 
-You'll edit two small text files: `config.js` and `_redirects`. Any text editor works (TextEdit on Mac: Format → Make Plain Text).
+You'll edit one small text file: `config.js`. Any text editor works (TextEdit on Mac: Format → Make Plain Text).
 
 ---
 
@@ -19,7 +19,7 @@ You'll edit two small text files: `config.js` and `_redirects`. Any text editor 
 
 1. Go to **console.firebase.google.com** and sign in with Google.
 2. **Create a project** → name it `Triangle Splitter` → you can turn off Google Analytics → **Create**.
-3. Note the **Project ID** shown under the name (e.g. `splitit-4f2a1`). You'll need it in step 5.
+3. Note the **Project ID** shown under the name (e.g. `splitit-4f2a1`).
 
 ## 3. Connect the app (config.js)
 
@@ -38,34 +38,19 @@ You'll edit two small text files: `config.js` and `_redirects`. Any text editor 
   },
 ```
 
-**Important:** set `authDomain` to **your Netlify address** (no `https://`), not the `firebaseapp.com` one Firebase gives you. That's what makes sign-in work from the iPhone Home Screen.
+**Important:** set `authDomain` to **your Netlify address** (no `https://`), not the `firebaseapp.com` one Firebase gives you. (Leftover from Google sign-in; harmless.)
 
-## 4. Turn on Google sign-in
+## 4. Sign-in
 
-1. In Firebase: **Build → Authentication → Get started**.
-2. **Sign-in method → Google → Enable**, pick your email as the support email, **Save**.
-3. **Settings → Authorized domains → Add domain** → `splitit-chang.netlify.app`.
-
-## 5. Point sign-in at your site (_redirects)
-
-Open `_redirects` and replace `YOUR-PROJECT-ID` with your Project ID from step 2:
-
-```
-/__/auth/*  https://splitit-4f2a1.firebaseapp.com/__/auth/:splat  200
-```
-
-Then allow that address in Google's settings:
-
-1. Go to **console.cloud.google.com**, and pick your Triangle Splitter project at the top.
-2. **APIs & Services → Credentials** → click **Web client (auto created by Google Service)**.
-3. Under **Authorized redirect URIs**, **Add URI**: `https://splitit-chang.netlify.app/__/auth/handler` → **Save**.
+Nothing to set up. People sign in by typing a username (no password, no Google).
+**Anyone who types a username can see and change that account's bills and payment info**, so only share the app with people you trust.
 
 ## 6. Create the database and lock it down
 
 1. In Firebase: **Build → Firestore Database → Create database**. Pick a US location, start in **production mode**.
 2. Open the **Rules** tab, delete what's there, paste everything from `firestore.rules`, and click **Publish**.
 
-These rules are what make sure friends only ever see their own amount.
+These rules only check that usernames are well-formed. With no passwords, they can't keep amounts private.
 
 ## 7. Upload again
 
@@ -74,13 +59,6 @@ Open your address on your iPhone, tap **Sign in**, and you're set. (If you'd alr
 
 ---
 
-## Optional: Sign in with Apple
-
-Needs a paid Apple Developer account ($99/year). In Firebase, **Authentication → Sign-in method → Apple**, follow its steps
-(Services ID, key, and the same `https://splitit-chang.netlify.app/__/auth/handler` return URL), then set `apple: true` in `config.js` and upload again.
-
 ## Troubleshooting
 
-- **"This web address isn't approved for sign-in"**: redo step 4.3 with exactly your Netlify address.
-- **Sign-in page shows an error about redirect_uri**: redo step 5 (the URI must end in `/__/auth/handler`).
 - **"Couldn't save the bill" or friends see "Bill not found"**: check step 6 (database created, rules published).

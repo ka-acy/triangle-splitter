@@ -1,5 +1,5 @@
 // Triangle Splitter service worker: keeps the app (and the receipt reader) available offline.
-const VERSION = 'splitit-v2';
+const VERSION = 'splitit-v3';
 const CORE = ['./', './index.html', './config.js', './cloud.js', './firebase.js', './manifest.json',
               './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 // Third-party files that are safe to keep (receipt reader code + language data)
@@ -37,5 +37,5 @@ self.addEventListener('fetch', e => {
       return res;
     })));
   }
-  // Everything else (Firebase, Google sign-in, Venmo) goes straight to the network.
+  // Everything else (Firebase, Venmo) goes straight to the network.
 });

@@ -9,12 +9,10 @@ if (cfg.firebase && cfg.firebase.apiKey) import('./firebase.js').then(mod => { F
 
 function init() {
   const app = F.initializeApp(cfg.firebase);
-  const auth = F.getAuth(app);
   const db = F.initializeFirestore(app, { localCache: F.persistentLocalCache({ tabManager: F.persistentMultipleTabManager() }) });
   if (cfg.emulator) {
-    F.connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true });
     F.connectFirestoreEmulator(db, 'localhost', 8080);
-    C._test = { auth, F, db };
+    C._test = { F, db };
   }
   C.enabled = true;
 
@@ -25,8 +23,9 @@ function init() {
   const userRef = uid => F.doc(db, 'users', uid);
   let unsubMembers = null, unsubJoin = [], saveTimer = null, sharedFor = null, photoFor = null;
 
-  F.getRedirectResult(auth).catch(e => toast(signInError(e)));
-  F.onAuthStateChanged(auth, async u => {
+  // No passwords: the username is the account. Anyone who types a username gets that account.
+  const NAME_KEY = 'splitit.username';
+  async function setUser(u) {
     C.user = u;
     if (u) {
       try {
@@ -47,29 +46,26 @@ function init() {
     }
     renderAccount();
     route();
-  });
-
-  /* ---- auth ---- */
-  C.signIn = async kind => {
-    const provider = kind === 'apple' ? new F.OAuthProvider('apple.com') : new F.GoogleAuthProvider();
-    if (kind === 'apple') { provider.addScope('email'); provider.addScope('name'); }
-    const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
-    try {
-      if (standalone) await F.signInWithRedirect(auth, provider);   // Home Screen app: popups don't work
-      else await F.signInWithPopup(auth, provider);
-    } catch (e) {
-      if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') F.signInWithRedirect(auth, provider);
-      else if (e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request') toast(signInError(e));
-    }
-  };
-  C.signOut = async () => { C.closeBill(); await F.signOut(auth); reset(); };
-  C.firstName = () => (C.user.displayName || 'Me').split(' ')[0];
-  function signInError(e) {
-    if (!e || !e.code) return 'Sign-in failed. Try again.';
-    if (e.code === 'auth/unauthorized-domain') return 'This web address isn\'t approved for sign-in yet (see setup step 4).';
-    if (e.code === 'auth/network-request-failed') return 'You need a connection to sign in.';
-    return 'Sign-in failed (' + e.code.replace('auth/', '') + ').';
   }
+
+  /* ---- sign in with a username ---- */
+  C.cleanName = s => (s || '').trim().toLowerCase();
+  C.validName = n => /^[a-z0-9_.-]{3,30}$/.test(n) && n !== '.' && n !== '..';
+  C.signIn = async (name, remember) => {
+    const n = C.cleanName(name);
+    if (!C.validName(n)) { toast('Usernames are 3–30 letters, numbers, _ . or -'); return false; }
+    try { remember ? localStorage.setItem(NAME_KEY, n) : localStorage.removeItem(NAME_KEY); } catch (e) {}
+    await setUser({ uid: n, displayName: n });
+    return true;
+  };
+  C.signOut = async () => {
+    C.closeBill();
+    try { localStorage.removeItem(NAME_KEY); } catch (e) {}
+    await setUser(null); reset();
+  };
+  C.firstName = () => (C.user.displayName || 'Me').split(' ')[0];
+  let saved = ''; try { saved = localStorage.getItem(NAME_KEY) || ''; } catch (e) {}
+  setUser(C.validName(saved) ? { uid: saved, displayName: saved } : null);   // like the old first auth callback: render + route once
 
   /* ---- profile ---- */
   C.syncSaved = () => {
@@ -265,7 +261,7 @@ function init() {
     unsubJoin.forEach(u => u()); unsubJoin = [];
     if (!C.user) {
       el.innerHTML = `<h1>You've been invited to split a bill.</h1>
-        <p class="sub">Sign in to check off what you had. You'll see exactly what you owe, and nobody else sees your amount.</p>
+        <p class="sub">Enter a username to check off what you had. You'll see exactly what you owe.</p>
         ${signInButtons()}`;
       wireSignIn(el);
       return;
